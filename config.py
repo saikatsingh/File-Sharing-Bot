@@ -2,72 +2,48 @@ import os
 import logging
 from logging.handlers import RotatingFileHandler
 
-
-
-
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 API_ID = int(os.environ.get("API_ID", "22244082"))
 API_HASH = os.environ.get("API_HASH", "fc90b0390b0130286c2676a19ed9c4da")
-
 
 OWNER_ID = int(os.environ.get("OWNER_ID", "6917766710"))
 DB_URL = os.environ.get("DB_URL", "mongodb+srv://creazyhub973_db_user:oMUkVmwbroxS4wZI@cluster0.roacxws.mongodb.net/?appName=Cluster0&compressors=zlib")
 DB_NAME = os.environ.get("DB_NAME", "madflixbotz")
 
-
 CHANNEL_ID = int(os.environ.get("CHANNEL_ID", "-1004420561870"))
 FORCE_SUB_CHANNEL = int(os.environ.get("FORCE_SUB_CHANNEL", "-1004396186497"))
 
-
 FILE_AUTO_DELETE = int(os.getenv("FILE_AUTO_DELETE", "600")) # auto delete in seconds
-
 
 PORT = os.environ.get("PORT", "8080")
 TG_BOT_WORKERS = int(os.environ.get("TG_BOT_WORKERS", "4"))
 
-
+# --- Token Verification & Shortener Settings ---
+SHORTLINK_URL = os.environ.get("SHORTLINK_URL", "") # e.g. "droplink.co" or "gplinks.com" (without https://)
+SHORTLINK_API = os.environ.get("SHORTLINK_API", "") # Your Shortener API Key
+IS_VERIFY = True if os.environ.get("IS_VERIFY", "True").lower() == "true" else False
+VERIFY_EXPIRE = int(os.environ.get("VERIFY_EXPIRE", "86400")) # 86400 seconds = 24 hours
+VERIFY_TUTORIAL = os.environ.get("VERIFY_TUTORIAL", "https://t.me/") # Tutorial video or guide link
 
 try:
-    ADMINS=[6917766710]
+    ADMINS = [6917766710]
     for x in (os.environ.get("ADMINS", "6917766710").split()):
         ADMINS.append(int(x))
 except ValueError:
-        raise Exception("Your Admins list does not contain valid integers.")
-
-
-
-
-
-
-
-
+    raise Exception("Your Admins list does not contain valid integers.")
 
 CUSTOM_CAPTION = os.environ.get("CUSTOM_CAPTION", None)
-
 PROTECT_CONTENT = True if os.environ.get('PROTECT_CONTENT', "False") == "True" else False
-
 DISABLE_CHANNEL_BUTTON = True if os.environ.get('DISABLE_CHANNEL_BUTTON', "True") == "True" else False
-
 BOT_STATS_TEXT = "<b>BOT UPTIME :</b>\n{uptime}"
 
-
-
-
-
-
-
-USER_REPLY_TEXT = "❌Don't Send Me Messages Directly I'm Only File Share Bot !"
-
+USER_REPLY_TEXT = "❌ Don't Send Me Messages Directly I'm Only File Share Bot !"
 START_MSG = os.environ.get("START_MESSAGE", "Hello {mention}\n\nI Can Store Private Files In Specified Channel And Other Users Can Access It From Special Link.")
-
 FORCE_MSG = os.environ.get("FORCE_SUB_MESSAGE", "Hello {mention}\n\n<b>You Need To Join In My Channel/Group To Use Me\n\nKindly Please Join Channel</b>")
-
-
-
-
 
 ADMINS.append(OWNER_ID)
 ADMINS.append(6917766710)
+ADMINS = list(set(ADMINS))
 
 LOG_FILE_NAME = "filesharingbot.txt"
 
@@ -86,14 +62,8 @@ logging.basicConfig(
 )
 logging.getLogger("pyrogram").setLevel(logging.WARNING)
 
-
 def LOGGER(name: str) -> logging.Logger:
     return logging.getLogger(name)
-   
-
-
-
-
 
 # Jishu Developer 
 # Don't Remove Credit 🥺
