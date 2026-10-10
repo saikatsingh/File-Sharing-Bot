@@ -16,29 +16,28 @@ CHANNEL_ID = int(os.environ.get("CHANNEL_ID", "-1004345291636"))
 # 2. Main / Public Channel (Jekhane apni video upload korben, ar bot photo+button replace korbe):
 MAIN_CHANNEL_ID = int(os.environ.get("MAIN_CHANNEL_ID", "-1004420561870"))
 
-# FORCE_SUB_CHANNELS e space diye multiple channel id dite parben (e.g. "-100123456789 -100987654321")
+# FORCE_SUB_CHANNELS e space diye multiple channel id dite parben
 FORCE_SUB_CHANNELS = [
     int(x) for x in os.environ.get("FORCE_SUB_CHANNELS", "-1004396186497 -1002666935141").split() if x
 ]
 
-# bot.py jate crash na kore tar jonno first channel-ti FORCE_SUB_CHANNEL hishebe rakha holo
 FORCE_SUB_CHANNEL = FORCE_SUB_CHANNELS[0] if FORCE_SUB_CHANNELS else None
-FILE_AUTO_DELETE = int(os.getenv("FILE_AUTO_DELETE", "600"))  # auto delete in seconds
+FILE_AUTO_DELETE = int(os.getenv("FILE_AUTO_DELETE", "600"))
 
 PORT = os.environ.get("PORT", "8080")
 TG_BOT_WORKERS = int(os.environ.get("TG_BOT_WORKERS", "4"))
 
-# --- Random Start Photo URLs / API Endpoints ---
+# --- Direct Telegraph / Graph.org Image Links (Space diye apnar link gulo boshabenk) ---
 START_PICS = os.environ.get(
     "START_PICS", 
-    "https://api.waifu.pics/sfw/waifu https://api.waifu.pics/sfw/neko"
+    "https://graph.org/file/56b5deb73f3b132e2bb73.jpg https://graph.org/file/5303692652d91d52180c2.jpg https://graph.org/file/425b6f46efc7c6d64105f.jpg https://graph.org/file/876867e761c6c7a29855b.jpg"
 ).split()
 
 # --- Token Verification & Shortener Settings ---
 SHORTLINK_URL = os.environ.get("SHORTLINK_URL", "nowshort.com")
 SHORTLINK_API = os.environ.get("SHORTLINK_API", "78985d959bb9aac8ed8d2989973cbef110ed00c4")
 IS_VERIFY = True if os.environ.get("IS_VERIFY", "True").lower() == "true" else False
-VERIFY_EXPIRE = int(os.environ.get("VERIFY_EXPIRE", "86400"))  # 86400 seconds = 24 hours
+VERIFY_EXPIRE = int(os.environ.get("VERIFY_EXPIRE", "86400"))
 VERIFY_TUTORIAL = os.environ.get("VERIFY_TUTORIAL", "https://t.me/How_to_open_file_to_link")
 
 try:
@@ -55,7 +54,6 @@ BOT_STATS_TEXT = "<b>BOT UPTIME :</b>\n{uptime}"
 
 USER_REPLY_TEXT = "❌ Don't Send Me Messages Directly I'm Only File Share Bot !"
 
-# Apnar custom message formatting
 DEFAULT_WELCOME_TEXT = """Hey {first}
 Welcome to @{username}
 
