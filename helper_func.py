@@ -1,13 +1,13 @@
 import base64
 import re
 import asyncio
+import aiohttp
+from urllib.parse import quote
 from pyrogram import filters
 from pyrogram.enums import ChatMemberStatus
-from config import FORCE_SUB_CHANNEL, ADMINS
+from config import FORCE_SUB_CHANNEL, ADMINS, SHORTLINK_URL, SHORTLINK_API
 from pyrogram.errors.exceptions.bad_request_400 import UserNotParticipant
 from pyrogram.errors import FloodWait
-
-
 
 
 async def is_subscribed(filter, client, update):
@@ -17,7 +17,7 @@ async def is_subscribed(filter, client, update):
     if user_id in ADMINS:
         return True
     try:
-        member = await client.get_chat_member(chat_id = FORCE_SUB_CHANNEL, user_id = user_id)
+        member = await client.get_chat_member(chat_id=FORCE_SUB_CHANNEL, user_id=user_id)
     except UserNotParticipant:
         return False
 
@@ -75,7 +75,7 @@ async def get_message_id(client, message):
         return 0
     elif message.text:
         pattern = "https://t.me/(?:c/)?(.*)/(\d+)"
-        matches = re.match(pattern,message.text)
+        matches = re.match(pattern, message.text)
         if not matches:
             return 0
         channel_id = matches.group(1)
@@ -112,11 +112,25 @@ def get_readable_time(seconds: int) -> str:
     return up_time
 
 
+async def get_shortlink(url: str) -> str:
+    """যেকোনো URL Shortener সাইটের API থেকে লিংক ছোট করার ফাংশন"""
+    if not SHORTLINK_URL or not SHORTLINK_API:
+        return url
+    
+    api_url = f"https://{SHORTLINK_URL}/api?api={SHORTLINK_API}&url={quote(url)}"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(api_url, timeout=10) as response:
+                data = await response.json()
+                if data.get("status") == "success" or "shortenedUrl" in data:
+                    return data.get("shortenedUrl", url)
+                return url
+    except Exception as e:
+        print(f"Shortener API Error: {e}")
+        return url
+
+
 subscribed = filters.create(is_subscribed)
-       
-
-
-
 
 
 # Jishu Developer 
