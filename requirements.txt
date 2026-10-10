@@ -1,8 +1,7 @@
-kurigram
+pyrogram>=2.0.106
 TgCrypto
 pyromod
 pymongo[srv]
 dnspython
 aiohttp
 humanize
-
