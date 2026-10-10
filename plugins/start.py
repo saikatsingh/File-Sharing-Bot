@@ -6,7 +6,8 @@ from pyrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated
 from bot import Bot
 from config import (
     ADMINS, FORCE_MSG, START_MSG, CUSTOM_CAPTION, DISABLE_CHANNEL_BUTTON, 
-    PROTECT_CONTENT, FILE_AUTO_DELETE, IS_VERIFY, SHORTLINK_URL, SHORTLINK_API, VERIFY_TUTORIAL
+    PROTECT_CONTENT, FILE_AUTO_DELETE, IS_VERIFY, SHORTLINK_URL, SHORTLINK_API, VERIFY_TUTORIAL,
+    FORCE_SUB_CHANNELS
 )
 from helper_func import subscribed, encode, decode, get_messages, get_shortlink
 from database.database import (
@@ -176,11 +177,17 @@ async def start_command(client: Client, message: Message):
 
 @Bot.on_message(filters.command('start') & filters.private)
 async def not_joined(client: Client, message: Message):
-    buttons = [
-        [
-            InlineKeyboardButton(text="Join Channel", url=client.invitelink)
-        ]
-    ]
+    buttons = []
+    
+    # Protita channel er jonno alada invite link generate kore button add kora hocche
+    for idx, channel_id in enumerate(FORCE_SUB_CHANNELS, start=1):
+        try:
+            chat = await client.get_chat(channel_id)
+            invite_link = chat.invite_link or await client.export_chat_invite_link(channel_id)
+            buttons.append([InlineKeyboardButton(text=f"Join Channel {idx}", url=invite_link)])
+        except Exception as e:
+            print(f"Error getting invite link for channel {channel_id}: {e}")
+
     try:
         buttons.append(
             [
