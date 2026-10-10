@@ -1,6 +1,7 @@
 import base64
 import re
 import asyncio
+import io
 import aiohttp
 from urllib.parse import quote
 from pyrogram import filters
@@ -136,16 +137,49 @@ async def get_shortlink(url: str) -> str:
 
 
 async def get_random_pic(api_url: str):
+    """URL theke direct JSON parse kore link deowa"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+    }
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(headers=headers) as session:
             async with session.get(api_url, timeout=5) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     if isinstance(data, dict) and "url" in data:
                         return data["url"]
     except Exception as e:
-        print(f"Error fetching API image: {e}")
+        print(f"Error fetching API image URL: {e}")
     return api_url
+
+
+async def get_random_pic_data(api_url: str):
+    """Direct BytesIO memory buffer-e image download kore Telegram-e file hishebe pathanor jonno"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+    }
+    try:
+        async with aiohttp.ClientSession(headers=headers) as session:
+            target_url = api_url
+            
+            # API endpoint hole JSON theke original link extract kora
+            if "api.waifu.pics" in api_url or api_url.endswith("/neko") or api_url.endswith("/waifu"):
+                async with session.get(api_url, timeout=6) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        target_url = data.get("url", api_url)
+
+            # Direct bytes download kora
+            async with session.get(target_url, timeout=8) as img_resp:
+                if img_resp.status == 200:
+                    img_bytes = await img_resp.read()
+                    buffer = io.BytesIO(img_bytes)
+                    buffer.name = "start_pic.jpg"
+                    return buffer
+    except Exception as e:
+        print(f"Failed to fetch image buffer: {e}")
+        
+    return None
 
 
 subscribed = filters.create(is_subscribed)
