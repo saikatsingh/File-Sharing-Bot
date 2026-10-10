@@ -138,7 +138,19 @@ async def get_shortlink(url: str) -> str:
 
 subscribed = filters.create(is_subscribed)
 
+import aiohttp
 
+async def get_random_pic(api_url: str):
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(api_url, timeout=5) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if isinstance(data, dict) and "url" in data:
+                        return data["url"]
+    except Exception as e:
+        print(f"Error fetching API image: {e}")
+    return api_url
 # Jishu Developer 
 # Don't Remove Credit 🥺
 # Telegram Channel @Madflix_Bots
