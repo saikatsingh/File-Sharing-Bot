@@ -19,11 +19,11 @@ PORT = os.environ.get("PORT", "8080")
 TG_BOT_WORKERS = int(os.environ.get("TG_BOT_WORKERS", "4"))
 
 # --- Token Verification & Shortener Settings ---
-SHORTLINK_URL = os.environ.get("SHORTLINK_URL", "") # e.g. "droplink.co" or "gplinks.com" (without https://)
-SHORTLINK_API = os.environ.get("SHORTLINK_API", "") # Your Shortener API Key
+SHORTLINK_URL = os.environ.get("SHORTLINK_URL", "nowshort.com") # e.g. "droplink.co" or "gplinks.com" (without https://)
+SHORTLINK_API = os.environ.get("SHORTLINK_API", "78985d959bb9aac8ed8d2989973cbef110ed00c4") # Your Shortener API Key
 IS_VERIFY = True if os.environ.get("IS_VERIFY", "True").lower() == "true" else False
 VERIFY_EXPIRE = int(os.environ.get("VERIFY_EXPIRE", "86400")) # 86400 seconds = 24 hours
-VERIFY_TUTORIAL = os.environ.get("VERIFY_TUTORIAL", "https://t.me/") # Tutorial video or guide link
+VERIFY_TUTORIAL = os.environ.get("VERIFY_TUTORIAL", "https://t.me/How_to_open_file_to_link") # Tutorial video or guide link
 
 try:
     ADMINS = [6917766710]
