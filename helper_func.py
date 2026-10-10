@@ -5,26 +5,32 @@ import aiohttp
 from urllib.parse import quote
 from pyrogram import filters
 from pyrogram.enums import ChatMemberStatus
-from config import FORCE_SUB_CHANNEL, ADMINS, SHORTLINK_URL, SHORTLINK_API
+from config import FORCE_SUB_CHANNELS, ADMINS, SHORTLINK_URL, SHORTLINK_API
 from pyrogram.errors.exceptions.bad_request_400 import UserNotParticipant
 from pyrogram.errors import FloodWait
 
 
 async def is_subscribed(filter, client, update):
-    if not FORCE_SUB_CHANNEL:
+    if not FORCE_SUB_CHANNELS:
         return True
     user_id = update.from_user.id
     if user_id in ADMINS:
         return True
-    try:
-        member = await client.get_chat_member(chat_id=FORCE_SUB_CHANNEL, user_id=user_id)
-    except UserNotParticipant:
-        return False
-
-    if not member.status in [ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.MEMBER]:
-        return False
-    else:
-        return True 
+    
+    # Protita Force Sub channel ek ek kore check korbe
+    for channel in FORCE_SUB_CHANNELS:
+        try:
+            member = await client.get_chat_member(chat_id=channel, user_id=user_id)
+            if member.status not in [ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.MEMBER]:
+                return False
+        except UserNotParticipant:
+            return False
+        except Exception as e:
+            # Kono channel e bot admin na thakle ba invalid hole ignore korbe
+            print(f"Error checking channel {channel}: {e}")
+            pass
+            
+    return True
 
 
 async def encode(string):
