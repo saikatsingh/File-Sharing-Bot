@@ -20,6 +20,73 @@ jishudeveloper = madflixofficials
 file_auto_delete = humanize.naturaldelta(jishudeveloper)
 
 
+async def send_styled_start(client: Client, message: Message):
+    """User subscribed thakuk ba na thakuk — eki styled caption, buttons ebong random image pathabe"""
+    buttons = []
+    
+    # 1. Force Sub Channel join buttons
+    for idx, channel_id in enumerate(FORCE_SUB_CHANNELS, start=1):
+        try:
+            chat = await client.get_chat(channel_id)
+            invite_link = chat.invite_link or await client.export_chat_invite_link(channel_id)
+            buttons.append([InlineKeyboardButton(text=f"👉 Join Channel {idx} 👈", url=invite_link)])
+        except Exception as e:
+            print(f"Error getting invite link for channel {channel_id}: {e}")
+
+    # 2. Try Again / Verify Button
+    try:
+        deep_link = message.command[1] if len(message.command) > 1 else ""
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text='🔄 Try Again / Verify',
+                    url=f"https://t.me/{client.username}?start={deep_link}"
+                )
+            ]
+        )
+    except IndexError:
+        pass
+
+    # 3. Exact custom message formatting
+    bot_username = client.username or (await client.get_me()).username
+    user_name = message.from_user.first_name if message.from_user else "User"
+
+    caption_text = f"""Hey {user_name}
+Welcome to @{bot_username}
+
+🥵🥵Join Below Channels And Tap Verify To Continue 🍑🍑"""
+
+    # 4. Random Image fetch kora (API ba static URL)
+    raw_url = random.choice(START_PICS) if START_PICS else None
+    img_url = None
+
+    if raw_url:
+        if "api.waifu.pics" in raw_url or raw_url.endswith("/neko") or raw_url.endswith("/waifu"):
+            img_url = await get_random_pic(raw_url)
+        else:
+            img_url = raw_url
+
+    # 5. Image attach kore send kora (Fallback: direct styled text)
+    if img_url:
+        try:
+            await message.reply_photo(
+                photo=img_url,
+                caption=caption_text,
+                reply_markup=InlineKeyboardMarkup(buttons),
+                quote=True
+            )
+            return
+        except Exception as e:
+            print(f"Failed to send start photo: {e}")
+
+    await message.reply_text(
+        text=caption_text,
+        reply_markup=InlineKeyboardMarkup(buttons),
+        quote=True,
+        disable_web_page_preview=True
+    )
+
+
 @Bot.on_message(filters.command('start') & filters.private & subscribed)
 async def start_command(client: Client, message: Message):
     user_id = message.from_user.id
@@ -30,6 +97,7 @@ async def start_command(client: Client, message: Message):
             pass
 
     text = message.text
+    # Jodi user kono file ba verification link click kore ashe (Deep Link)
     if len(text) > 7:
         try:
             base64_string = text.split(" ", 1)[1]
@@ -150,95 +218,15 @@ async def start_command(client: Client, message: Message):
 
         asyncio.create_task(delete_files(madflix_msgs, client, k))
         return
-    else:
-        # User already subscribed hole normal start message
-        reply_markup = InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton("😊 About Me", callback_data="about"),
-                    InlineKeyboardButton("🔒 Close", callback_data="close")
-                ]
-            ]
-        )
-        await message.reply_text(
-            text=START_MSG.format(
-                first=message.from_user.first_name,
-                last=message.from_user.last_name,
-                username=None if not message.from_user.username else '@' + message.from_user.username,
-                mention=message.from_user.mention,
-                id=message.from_user.id
-            ),
-            reply_markup=reply_markup,
-            disable_web_page_preview=True,
-            quote=True
-        )
-        return
+
+    # User already subscribed thakleo shudhu /start dile exact new photo + message ashbe
+    await send_styled_start(client, message)
 
 
+# User channel-e join na thakle shudhu /start dile eki notun photo + message ashbe
 @Bot.on_message(filters.command('start') & filters.private)
 async def not_joined(client: Client, message: Message):
-    buttons = []
-    
-    # 1. Force Sub Channel invite links button akare add kora
-    for idx, channel_id in enumerate(FORCE_SUB_CHANNELS, start=1):
-        try:
-            chat = await client.get_chat(channel_id)
-            invite_link = chat.invite_link or await client.export_chat_invite_link(channel_id)
-            buttons.append([InlineKeyboardButton(text=f"👉 Join Channel {idx} 👈", url=invite_link)])
-        except Exception as e:
-            print(f"Error getting invite link for channel {channel_id}: {e}")
-
-    # 2. Try Again / Verify Button
-    try:
-        buttons.append(
-            [
-                InlineKeyboardButton(
-                    text='🔄 Try Again / Verify',
-                    url=f"https://t.me/{client.username}?start={message.command[1]}"
-                )
-            ]
-        )
-    except IndexError:
-        pass
-
-    # 3. Apnar custom message formatting
-    bot_username = client.username or (await client.get_me()).username
-    user_name = message.from_user.first_name if message.from_user else "User"
-
-    caption_text = f"""Hey {user_name}
-Welcome to @{bot_username}
-
-🥵🥵Join Below Channels And Tap Verify To Continue 🍑🍑"""
-
-    # 4. Random Image fetch kora (API ba static URL)
-    raw_url = random.choice(START_PICS) if START_PICS else None
-    img_url = None
-
-    if raw_url:
-        if "api.waifu.pics" in raw_url or raw_url.endswith("/neko") or raw_url.endswith("/waifu"):
-            img_url = await get_random_pic(raw_url)
-        else:
-            img_url = raw_url
-
-    # 5. Image attach kore message pathano (Error hole fallback: text)
-    if img_url:
-        try:
-            await message.reply_photo(
-                photo=img_url,
-                caption=caption_text,
-                reply_markup=InlineKeyboardMarkup(buttons),
-                quote=True
-            )
-            return
-        except Exception as e:
-            print(f"Failed to send start photo: {e}")
-
-    await message.reply(
-        text=caption_text,
-        reply_markup=InlineKeyboardMarkup(buttons),
-        quote=True,
-        disable_web_page_preview=True
-    )
+    await send_styled_start(client, message)
 
 
 @Bot.on_message(filters.command('users') & filters.private & filters.user(ADMINS))
@@ -303,10 +291,3 @@ async def delete_files(messages, client, k):
         except Exception as e:
             print(f"The attempt to delete the media {msg.id} was unsuccessful: {e}")
     await k.edit_text("Your Video / File Is Successfully Deleted ✅")
-
-
-# Jishu Developer 
-# Don't Remove Credit 🥺
-# Telegram Channel @Madflix_Bots
-# Backup Channel @JishuBotz
-# Developer @JishuDeveloper
