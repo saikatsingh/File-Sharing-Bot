@@ -5,25 +5,26 @@ from pyrogram import filters, Client
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import FloodWait
 from bot import Bot
-from config import ADMINS, CHANNEL_ID, DB_CHANNEL_ID, DISABLE_CHANNEL_BUTTON
+from config import ADMINS, CHANNEL_ID, MAIN_CHANNEL_ID, DISABLE_CHANNEL_BUTTON
 from helper_func import encode
 
 logger = logging.getLogger(__name__)
+
 
 @Bot.on_message(filters.private & filters.user(ADMINS) & ~filters.command(['start', 'users', 'broadcast', 'batch', 'genlink', 'stats']))
 async def channel_post(client: Client, message: Message):
     reply_text = await message.reply_text("Please Wait...!", quote=True)
     try:
-        post_message = await message.copy(chat_id=DB_CHANNEL_ID, disable_notification=True)
+        post_message = await message.copy(chat_id=client.db_channel.id, disable_notification=True)
     except FloodWait as e:
         await asyncio.sleep(e.x)
-        post_message = await message.copy(chat_id=DB_CHANNEL_ID, disable_notification=True)
+        post_message = await message.copy(chat_id=client.db_channel.id, disable_notification=True)
     except Exception as e:
         logger.error(f"Error copying post in private: {e}")
         await reply_text.edit_text("Something Went Wrong..!")
         return
 
-    converted_id = post_message.id * abs(DB_CHANNEL_ID)
+    converted_id = post_message.id * abs(client.db_channel.id)
     string = f"get-{converted_id}"
     base64_string = await encode(string)
     link = f"https://t.me/{client.username}?start={base64_string}"
@@ -45,26 +46,26 @@ async def channel_post(client: Client, message: Message):
             logger.error(f"Error adding button to copied message: {e}")
 
 
-@Bot.on_message(filters.channel & filters.incoming & filters.chat(CHANNEL_ID))
+# MAIN_CHANNEL_ID (Public Channel) e video ashle eti trigger hobe
+@Bot.on_message(filters.channel & filters.incoming & filters.chat(MAIN_CHANNEL_ID))
 async def new_post(client: Client, message: Message):
     if DISABLE_CHANNEL_BUTTON:
         return
 
-    # Shudhu video ba document media process korbe
     media = message.video or message.document
     if not media:
         return
 
     try:
-        # 1. Main Channel theke DB Channel-e copy kora
+        # 1. Public Channel theke Private DB Channel (client.db_channel.id) e copy kora
         try:
-            db_msg = await message.copy(chat_id=DB_CHANNEL_ID, disable_notification=True)
+            db_msg = await message.copy(chat_id=client.db_channel.id, disable_notification=True)
         except FloodWait as e:
             await asyncio.sleep(e.x)
-            db_msg = await message.copy(chat_id=DB_CHANNEL_ID, disable_notification=True)
+            db_msg = await message.copy(chat_id=client.db_channel.id, disable_notification=True)
 
-        # 2. Secret link generate kora
-        converted_id = db_msg.id * abs(DB_CHANNEL_ID)
+        # 2. Database Channel ID diye shothik link toiri
+        converted_id = db_msg.id * abs(client.db_channel.id)
         string = f"get-{converted_id}"
         base64_string = await encode(string)
         bot_uname = client.username or (await client.get_me()).username
@@ -74,16 +75,15 @@ async def new_post(client: Client, message: Message):
             [InlineKeyboardButton("📥 Download / Get File", url=link)]
         ])
 
-        # 3. Caption banano
+        # 3. Caption toiri
         file_name = getattr(media, "file_name", None) or "Media File"
         caption = message.caption.html if message.caption else f"🎬 <b>File:</b> <code>{file_name}</code>"
 
-        # 4. Thumbnail download kore send kora (Thumbnail file_id issue bypass korte)
+        # 4. Thumbnail download kore Public Channel e send kora
         photo_sent = False
         if media.thumbs:
             thumb_path = None
             try:
-                # Shudhu chotto thumbnail file-ta download hocche (koyek KB matro, video noy)
                 thumb_path = await client.download_media(media.thumbs[0].file_id)
                 if thumb_path and os.path.exists(thumb_path):
                     await client.send_photo(
@@ -99,7 +99,6 @@ async def new_post(client: Client, message: Message):
                 if thumb_path and os.path.exists(thumb_path):
                     os.remove(thumb_path)
 
-        # Jodi thumbnail na thake ba download fail hoy, tobe text message pathabe
         if not photo_sent:
             await client.send_message(
                 chat_id=message.chat.id,
@@ -108,7 +107,7 @@ async def new_post(client: Client, message: Message):
                 disable_web_page_preview=True
             )
 
-        # 5. Main Channel theke original video-ti delete kora
+        # 5. Public Channel theke original boro video remove kora
         try:
             await message.delete()
         except Exception as e:
