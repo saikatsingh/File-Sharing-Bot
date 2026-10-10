@@ -7,9 +7,9 @@ from bot import Bot
 from config import (
     ADMINS, FORCE_MSG, START_MSG, CUSTOM_CAPTION, DISABLE_CHANNEL_BUTTON, 
     PROTECT_CONTENT, FILE_AUTO_DELETE, IS_VERIFY, SHORTLINK_URL, SHORTLINK_API, VERIFY_TUTORIAL,
-    FORCE_SUB_CHANNELS
+    FORCE_SUB_CHANNELS, START_PICS
 )
-from helper_func import subscribed, encode, decode, get_messages, get_shortlink
+from helper_func import subscribed, encode, decode, get_messages, get_shortlink, get_random_pic
 from database.database import (
     add_user, del_user, full_userbase, present_user, 
     is_user_verified, update_verify_status, get_verify_token, set_verified
@@ -53,7 +53,6 @@ async def start_command(client: Client, message: Message):
         # --- 2. Check Verification for File Access ---
         if IS_VERIFY and (user_id not in ADMINS) and (SHORTLINK_URL and SHORTLINK_API):
             if not await is_user_verified(user_id):
-                # Built-in string conflict avoid korte direct characters use kora holo
                 chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
                 random_token = ''.join(random.choices(chars, k=10))
                 await update_verify_status(user_id, random_token)
@@ -152,6 +151,7 @@ async def start_command(client: Client, message: Message):
         asyncio.create_task(delete_files(madflix_msgs, client, k))
         return
     else:
+        # User already subscribed hole normal start message
         reply_markup = InlineKeyboardMarkup(
             [
                 [
@@ -179,20 +179,21 @@ async def start_command(client: Client, message: Message):
 async def not_joined(client: Client, message: Message):
     buttons = []
     
-    # Protita channel er jonno alada invite link generate kore button add kora hocche
+    # 1. Force Sub Channel invite links button akare add kora
     for idx, channel_id in enumerate(FORCE_SUB_CHANNELS, start=1):
         try:
             chat = await client.get_chat(channel_id)
             invite_link = chat.invite_link or await client.export_chat_invite_link(channel_id)
-            buttons.append([InlineKeyboardButton(text=f"Join Channel {idx}", url=invite_link)])
+            buttons.append([InlineKeyboardButton(text=f"👉 Join Channel {idx} 👈", url=invite_link)])
         except Exception as e:
             print(f"Error getting invite link for channel {channel_id}: {e}")
 
+    # 2. Try Again / Verify Button
     try:
         buttons.append(
             [
                 InlineKeyboardButton(
-                    text='Try Again',
+                    text='🔄 Try Again / Verify',
                     url=f"https://t.me/{client.username}?start={message.command[1]}"
                 )
             ]
@@ -200,14 +201,40 @@ async def not_joined(client: Client, message: Message):
     except IndexError:
         pass
 
+    # 3. Apnar custom message formatting
+    bot_username = client.username or (await client.get_me()).username
+    user_name = message.from_user.first_name if message.from_user else "User"
+
+    caption_text = f"""Hey {user_name}
+Welcome to @{bot_username}
+
+🥵🥵Join Below Channels And Tap Verify To Continue 🍑🍑"""
+
+    # 4. Random Image fetch kora (API ba static URL)
+    raw_url = random.choice(START_PICS) if START_PICS else None
+    img_url = None
+
+    if raw_url:
+        if "api.waifu.pics" in raw_url or raw_url.endswith("/neko") or raw_url.endswith("/waifu"):
+            img_url = await get_random_pic(raw_url)
+        else:
+            img_url = raw_url
+
+    # 5. Image attach kore message pathano (Error hole fallback: text)
+    if img_url:
+        try:
+            await message.reply_photo(
+                photo=img_url,
+                caption=caption_text,
+                reply_markup=InlineKeyboardMarkup(buttons),
+                quote=True
+            )
+            return
+        except Exception as e:
+            print(f"Failed to send start photo: {e}")
+
     await message.reply(
-        text=FORCE_MSG.format(
-            first=message.from_user.first_name,
-            last=message.from_user.last_name,
-            username=None if not message.from_user.username else '@' + message.from_user.username,
-            mention=message.from_user.mention,
-            id=message.from_user.id
-        ),
+        text=caption_text,
         reply_markup=InlineKeyboardMarkup(buttons),
         quote=True,
         disable_web_page_preview=True
