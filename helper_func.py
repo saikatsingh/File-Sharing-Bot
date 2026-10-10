@@ -27,7 +27,6 @@ async def is_subscribed(filter, client, update):
         except UserNotParticipant:
             return False
         except Exception as e:
-            # Kono channel e bot admin na thakle ba invalid hole ignore korbe
             print(f"Error checking channel {channel}: {e}")
             pass
             
@@ -137,45 +136,64 @@ async def get_shortlink(url: str) -> str:
 
 
 async def get_random_pic(api_url: str):
-    """URL theke direct JSON parse kore link deowa"""
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     try:
         async with aiohttp.ClientSession(headers=headers) as session:
             async with session.get(api_url, timeout=5) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    if isinstance(data, dict) and "url" in data:
-                        return data["url"]
+                    if isinstance(data, dict):
+                        if "url" in data:
+                            return data["url"]
+                        elif "images" in data and len(data["images"]) > 0:
+                            return data["images"][0].get("url", api_url)
+                        elif "results" in data and len(data["results"]) > 0:
+                            return data["results"][0].get("url", api_url)
     except Exception as e:
         print(f"Error fetching API image URL: {e}")
     return api_url
 
 
 async def get_random_pic_data(api_url: str):
-    """Direct BytesIO memory buffer-e image download kore Telegram-e file hishebe pathanor jonno"""
+    """Multiple API endpoints parse kore shasorir memory buffer-e image return kore"""
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     try:
         async with aiohttp.ClientSession(headers=headers) as session:
             target_url = api_url
             
-            # API endpoint hole JSON theke original link extract kora
-            if "api.waifu.pics" in api_url or api_url.endswith("/neko") or api_url.endswith("/waifu"):
-                async with session.get(api_url, timeout=6) as resp:
+            # 1. API theke real image link extract kora
+            if "nekos.best" in api_url:
+                async with session.get(api_url, timeout=5) as resp:
                     if resp.status == 200:
                         data = await resp.json()
-                        target_url = data.get("url", api_url)
+                        if data.get("results") and len(data["results"]) > 0:
+                            target_url = data["results"][0].get("url", api_url)
+            elif "api.waifu.im" in api_url:
+                async with session.get(api_url, timeout=5) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if data.get("images") and len(data["images"]) > 0:
+                            target_url = data["images"][0].get("url", api_url)
+            elif "api.waifu.pics" in api_url or api_url.endswith("/neko") or api_url.endswith("/waifu"):
+                async with session.get(api_url, timeout=5) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if isinstance(data, dict) and "url" in data:
+                            target_url = data["url"]
 
-            # Direct bytes download kora
-            async with session.get(target_url, timeout=8) as img_resp:
+            # 2. Direct binary buffer download kora
+            async with session.get(target_url, timeout=7) as img_resp:
                 if img_resp.status == 200:
                     img_bytes = await img_resp.read()
                     buffer = io.BytesIO(img_bytes)
                     buffer.name = "start_pic.jpg"
                     return buffer
+                else:
+                    print(f"Image download status: {img_resp.status}")
     except Exception as e:
         print(f"Failed to fetch image buffer: {e}")
         
