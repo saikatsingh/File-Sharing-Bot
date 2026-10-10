@@ -23,24 +23,23 @@ FORCE_SUB_CHANNELS = [
 
 # bot.py jate crash na kore tar jonno first channel-ti FORCE_SUB_CHANNEL hishebe rakha holo
 FORCE_SUB_CHANNEL = FORCE_SUB_CHANNELS[0] if FORCE_SUB_CHANNELS else None
-FILE_AUTO_DELETE = int(os.getenv("FILE_AUTO_DELETE", "600")) # auto delete in seconds
+FILE_AUTO_DELETE = int(os.getenv("FILE_AUTO_DELETE", "600"))  # auto delete in seconds
 
 PORT = os.environ.get("PORT", "8080")
 TG_BOT_WORKERS = int(os.environ.get("TG_BOT_WORKERS", "4"))
 
 # --- Random Start Photo URLs / API Endpoints ---
-# Multiple API ba Telegraph image links space diye dite parben
 START_PICS = os.environ.get(
     "START_PICS", 
-    "https://api.waifu.pics/nsfw/waifu https://api.waifu.pics/nsfw/neko"
+    "https://api.waifu.pics/sfw/waifu https://api.waifu.pics/sfw/neko"
 ).split()
 
 # --- Token Verification & Shortener Settings ---
-SHORTLINK_URL = os.environ.get("SHORTLINK_URL", "nowshort.com") # e.g. "droplink.co" or "gplinks.com" (without https://)
-SHORTLINK_API = os.environ.get("SHORTLINK_API", "78985d959bb9aac8ed8d2989973cbef110ed00c4") # Your Shortener API Key
+SHORTLINK_URL = os.environ.get("SHORTLINK_URL", "nowshort.com")
+SHORTLINK_API = os.environ.get("SHORTLINK_API", "78985d959bb9aac8ed8d2989973cbef110ed00c4")
 IS_VERIFY = True if os.environ.get("IS_VERIFY", "True").lower() == "true" else False
-VERIFY_EXPIRE = int(os.environ.get("VERIFY_EXPIRE", "86400")) # 86400 seconds = 24 hours
-VERIFY_TUTORIAL = os.environ.get("VERIFY_TUTORIAL", "https://t.me/How_to_open_file_to_link") # Tutorial video or guide link
+VERIFY_EXPIRE = int(os.environ.get("VERIFY_EXPIRE", "86400"))  # 86400 seconds = 24 hours
+VERIFY_TUTORIAL = os.environ.get("VERIFY_TUTORIAL", "https://t.me/How_to_open_file_to_link")
 
 try:
     ADMINS = [6917766710]
@@ -55,8 +54,15 @@ DISABLE_CHANNEL_BUTTON = True if os.environ.get('DISABLE_CHANNEL_BUTTON', "False
 BOT_STATS_TEXT = "<b>BOT UPTIME :</b>\n{uptime}"
 
 USER_REPLY_TEXT = "❌ Don't Send Me Messages Directly I'm Only File Share Bot !"
-START_MSG = os.environ.get("START_MESSAGE", "Hello {mention}\n\nI Can Store Private Files In Specified Channel And Other Users Can Access It From Special Link.")
-FORCE_MSG = os.environ.get("FORCE_SUB_MESSAGE", "Hello {mention}\n\n<b>You Need To Join In My Channel/Group To Use Me\n\nKindly Please Join Channel</b>")
+
+# Apnar custom message formatting
+DEFAULT_WELCOME_TEXT = """Hey {first}
+Welcome to @{username}
+
+🥵🥵Join Below Channels And Tap Verify To Continue 🍑🍑"""
+
+START_MSG = os.environ.get("START_MESSAGE", DEFAULT_WELCOME_TEXT)
+FORCE_MSG = os.environ.get("FORCE_SUB_MESSAGE", DEFAULT_WELCOME_TEXT)
 
 ADMINS.append(OWNER_ID)
 ADMINS.append(6917766710)
@@ -81,9 +87,3 @@ logging.getLogger("pyrogram").setLevel(logging.WARNING)
 
 def LOGGER(name: str) -> logging.Logger:
     return logging.getLogger(name)
-
-# Jishu Developer 
-# Don't Remove Credit 🥺
-# Telegram Channel @Madflix_Bots
-# Backup Channel @JishuBotz
-# Developer @JishuDeveloper
