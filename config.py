@@ -16,6 +16,8 @@ FORCE_SUB_CHANNELS = [
     int(x) for x in os.environ.get("FORCE_SUB_CHANNELS", "-1004396186497 -1002666935141").split() if x
 ]
 
+# bot.py jate crash na kore tar jonno first channel-ti FORCE_SUB_CHANNEL hishebe rakha holo
+FORCE_SUB_CHANNEL = FORCE_SUB_CHANNELS[0] if FORCE_SUB_CHANNELS else None
 FILE_AUTO_DELETE = int(os.getenv("FILE_AUTO_DELETE", "600")) # auto delete in seconds
 
 PORT = os.environ.get("PORT", "8080")
