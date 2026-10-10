@@ -33,22 +33,14 @@ async def send_styled_start(client: Client, message: Message):
         except Exception as e:
             print(f"Error getting invite link for channel {channel_id}: {e}")
 
-    # 2. Try Again / Verify Button
-    try:
-        deep_link = message.command[1] if len(message.command) > 1 else ""
-        buttons.append(
-            [
-                InlineKeyboardButton(
-                    text='🔄 Try Again / Verify',
-                    url=f"https://t.me/{client.username}?start={deep_link}"
-                )
-            ]
-        )
-    except IndexError:
-        pass
+    # 2. Try Again / Verify Button (Jodi deep link thake tobe deep link soho hobe)
+    bot_username = client.username or (await client.get_me()).username
+    deep_link = message.command[1] if (message.command and len(message.command) > 1) else ""
+    verify_url = f"https://t.me/{bot_username}?start={deep_link}" if deep_link else f"https://t.me/{bot_username}?start"
+    
+    buttons.append([InlineKeyboardButton(text='🔄 Try Again / Verify', url=verify_url)])
 
     # 3. Exact custom message formatting
-    bot_username = client.username or (await client.get_me()).username
     user_name = message.from_user.first_name if message.from_user else "User"
 
     caption_text = f"""Hey {user_name}
@@ -224,7 +216,7 @@ async def start_command(client: Client, message: Message):
 
 
 # User channel-e join na thakle shudhu /start dile eki notun photo + message ashbe
-@Bot.on_message(filters.command('start') & filters.private)
+@Bot.on_message(filters.command('start') & filters.private & ~subscribed)
 async def not_joined(client: Client, message: Message):
     await send_styled_start(client, message)
 
