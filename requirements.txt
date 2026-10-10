@@ -1,10 +1,8 @@
-pyrogram
+kurigram
 TgCrypto
 pyromod
-pymongo
+pymongo[srv]
 dnspython
 aiohttp
-
 humanize
-
 
