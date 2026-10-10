@@ -1,4 +1,4 @@
-import os, asyncio, humanize, string, random
+import os, asyncio, humanize, random
 from pyrogram import Client, filters, __version__
 from pyrogram.enums import ParseMode
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
@@ -21,10 +21,10 @@ file_auto_delete = humanize.naturaldelta(jishudeveloper)
 
 @Bot.on_message(filters.command('start') & filters.private & subscribed)
 async def start_command(client: Client, message: Message):
-    id = message.from_user.id
-    if not await present_user(id):
+    user_id = message.from_user.id
+    if not await present_user(user_id):
         try:
-            await add_user(id)
+            await add_user(user_id)
         except:
             pass
 
@@ -38,9 +38,9 @@ async def start_command(client: Client, message: Message):
         # --- 1. Token Verification Process ---
         if base64_string.startswith("verify_"):
             token = base64_string.split("verify_", 1)[1]
-            saved_token = await get_verify_token(id)
+            saved_token = await get_verify_token(user_id)
             if saved_token and saved_token == token:
-                await set_verified(id)
+                await set_verified(user_id)
                 await message.reply_text(
                     "<b>✅ Token Successfully Verified!</b>\n\n"
                     "Apnar verification safal hoyeche. Agami 24 ghantar jonno apni unrestricted access peyechen. Ekhon apnar file link-e click korun."
@@ -50,11 +50,12 @@ async def start_command(client: Client, message: Message):
             return
 
         # --- 2. Check Verification for File Access ---
-        if IS_VERIFY and (id not in ADMINS) and (SHORTLINK_URL and SHORTLINK_API):
-            if not await is_user_verified(id):
-                # Generate a random token
-                random_token = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
-                await update_verify_status(id, random_token)
+        if IS_VERIFY and (user_id not in ADMINS) and (SHORTLINK_URL and SHORTLINK_API):
+            if not await is_user_verified(user_id):
+                # Built-in string conflict avoid korte direct characters use kora holo
+                chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+                random_token = ''.join(random.choices(chars, k=10))
+                await update_verify_status(user_id, random_token)
                 
                 verification_url = f"https://t.me/{client.username}?start=verify_{random_token}"
                 shortened_url = await get_shortlink(verification_url)
@@ -73,8 +74,8 @@ async def start_command(client: Client, message: Message):
                 return
 
         # --- 3. Normal File Retrieval ---
-        string = await decode(base64_string)
-        argument = string.split("-")
+        decoded_string = await decode(base64_string)
+        argument = decoded_string.split("-")
         if len(argument) == 3:
             try:
                 start = int(int(argument[1]) / abs(client.db_channel.id))
