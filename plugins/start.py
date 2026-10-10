@@ -9,7 +9,7 @@ from config import (
     PROTECT_CONTENT, FILE_AUTO_DELETE, IS_VERIFY, SHORTLINK_URL, SHORTLINK_API, VERIFY_TUTORIAL,
     FORCE_SUB_CHANNELS, START_PICS
 )
-from helper_func import subscribed, encode, decode, get_messages, get_shortlink, get_random_pic
+from helper_func import subscribed, encode, decode, get_messages, get_shortlink, get_random_pic_data
 from database.database import (
     add_user, del_user, full_userbase, present_user, 
     is_user_verified, update_verify_status, get_verify_token, set_verified
@@ -48,21 +48,18 @@ Welcome to @{bot_username}
 
 🥵🥵Join Below Channels And Tap Verify To Continue 🍑🍑"""
 
-    # 4. Random Image fetch kora (API ba static URL)
+    # 4. Random Image fetch kora (Memory buffer theke)
     raw_url = random.choice(START_PICS) if START_PICS else None
-    img_url = None
+    photo_buffer = None
 
     if raw_url:
-        if "api.waifu.pics" in raw_url or raw_url.endswith("/neko") or raw_url.endswith("/waifu"):
-            img_url = await get_random_pic(raw_url)
-        else:
-            img_url = raw_url
+        photo_buffer = await get_random_pic_data(raw_url)
 
-    # 5. Image attach kore send kora (Fallback: direct styled text)
-    if img_url:
+    # 5. Image attach kore direct memory stream send kora (Fallback: text)
+    if photo_buffer:
         try:
             await message.reply_photo(
-                photo=img_url,
+                photo=photo_buffer,
                 caption=caption_text,
                 reply_markup=InlineKeyboardMarkup(buttons),
                 quote=True
