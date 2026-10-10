@@ -11,7 +11,10 @@ DB_URL = os.environ.get("DB_URL", "mongodb+srv://creazyhub973_db_user:oMUkVmwbro
 DB_NAME = os.environ.get("DB_NAME", "madflixbotz")
 
 CHANNEL_ID = int(os.environ.get("CHANNEL_ID", "-1004420561870"))
-FORCE_SUB_CHANNEL = int(os.environ.get("FORCE_SUB_CHANNEL", "-1004396186497"))
+# FORCE_SUB_CHANNELS e space diye multiple channel id dite parben (e.g. "-100123456789 -100987654321")
+FORCE_SUB_CHANNELS = [
+    int(x) for x in os.environ.get("FORCE_SUB_CHANNELS", "-1004396186497").split() if x
+]
 
 FILE_AUTO_DELETE = int(os.getenv("FILE_AUTO_DELETE", "600")) # auto delete in seconds
 
