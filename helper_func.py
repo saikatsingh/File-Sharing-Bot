@@ -41,7 +41,7 @@ async def encode(string):
 
 
 async def decode(base64_string):
-    base64_string = base64_string.strip("=") # links generated before this commit will be having = sign, hence striping them to handle padding errors.
+    base64_string = base64_string.strip("=")
     base64_bytes = (base64_string + "=" * (-len(base64_string) % 4)).encode("ascii")
     string_bytes = base64.urlsafe_b64decode(base64_bytes) 
     string = string_bytes.decode("ascii")
@@ -119,7 +119,6 @@ def get_readable_time(seconds: int) -> str:
 
 
 async def get_shortlink(url: str) -> str:
-    """যেকোনো URL Shortener সাইটের API থেকে লিংক ছোট করার ফাংশন"""
     if not SHORTLINK_URL or not SHORTLINK_API:
         return url
     
@@ -136,10 +135,6 @@ async def get_shortlink(url: str) -> str:
         return url
 
 
-subscribed = filters.create(is_subscribed)
-
-import aiohttp
-
 async def get_random_pic(api_url: str):
     try:
         async with aiohttp.ClientSession() as session:
@@ -151,8 +146,6 @@ async def get_random_pic(api_url: str):
     except Exception as e:
         print(f"Error fetching API image: {e}")
     return api_url
-# Jishu Developer 
-# Don't Remove Credit 🥺
-# Telegram Channel @Madflix_Bots
-# Backup Channel @JishuBotz
-# Developer @JishuDeveloper
+
+
+subscribed = filters.create(is_subscribed)
