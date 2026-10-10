@@ -14,7 +14,7 @@ DB_NAME = os.environ.get("DB_NAME", "madflixbotz")
 CHANNEL_ID = int(os.environ.get("CHANNEL_ID", "-1004420561870"))
 
 # Private Database Channel (যেখানে মূল ফাইল/ভিডিও সেভ থাকবে)
-DB_CHANNEL_ID = int(os.environ.get("DB_CHANNEL_ID", "-1004420561870"))
+DB_CHANNEL_ID = int(os.environ.get("DB_CHANNEL_ID", "-1004345291636"))
 # FORCE_SUB_CHANNELS e space diye multiple channel id dite parben (e.g. "-100123456789 -100987654321")
 FORCE_SUB_CHANNELS = [
     int(x) for x in os.environ.get("FORCE_SUB_CHANNELS", "-1004396186497 -1002666935141").split() if x
