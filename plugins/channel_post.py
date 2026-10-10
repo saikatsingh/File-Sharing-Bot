@@ -1,3 +1,4 @@
+import os
 import asyncio
 import logging
 from pyrogram import filters, Client
@@ -49,7 +50,7 @@ async def new_post(client: Client, message: Message):
     if DISABLE_CHANNEL_BUTTON:
         return
 
-    # Shudhu video ba document hole process korbe
+    # Shudhu video ba document media process korbe
     media = message.video or message.document
     if not media:
         return
@@ -73,30 +74,33 @@ async def new_post(client: Client, message: Message):
             [InlineKeyboardButton("📥 Download / Get File", url=link)]
         ])
 
-        # 3. Caption toiri kora
+        # 3. Caption banano
         file_name = getattr(media, "file_name", None) or "Media File"
         caption = message.caption.html if message.caption else f"🎬 <b>File:</b> <code>{file_name}</code>"
 
-        # 4. Thumbnail check kora
-        thumb_file_id = None
+        # 4. Thumbnail download kore send kora (Thumbnail file_id issue bypass korte)
+        photo_sent = False
         if media.thumbs:
-            thumb_file_id = media.thumbs[0].file_id
-
-        # 5. Main Channel-e thumbnail ba text post pathano
-        posted = False
-        if thumb_file_id:
+            thumb_path = None
             try:
-                await client.send_photo(
-                    chat_id=message.chat.id,
-                    photo=thumb_file_id,
-                    caption=caption,
-                    reply_markup=reply_markup
-                )
-                posted = True
+                # Shudhu chotto thumbnail file-ta download hocche (koyek KB matro, video noy)
+                thumb_path = await client.download_media(media.thumbs[0].file_id)
+                if thumb_path and os.path.exists(thumb_path):
+                    await client.send_photo(
+                        chat_id=message.chat.id,
+                        photo=thumb_path,
+                        caption=caption,
+                        reply_markup=reply_markup
+                    )
+                    photo_sent = True
             except Exception as e:
-                logger.warning(f"Failed to send thumbnail photo directly ({e}), sending message instead.")
+                logger.error(f"Failed to download/send thumbnail: {e}")
+            finally:
+                if thumb_path and os.path.exists(thumb_path):
+                    os.remove(thumb_path)
 
-        if not posted:
+        # Jodi thumbnail na thake ba download fail hoy, tobe text message pathabe
+        if not photo_sent:
             await client.send_message(
                 chat_id=message.chat.id,
                 text=caption,
@@ -104,11 +108,11 @@ async def new_post(client: Client, message: Message):
                 disable_web_page_preview=True
             )
 
-        # 6. Main Channel theke original boro video-ti delete kora
+        # 5. Main Channel theke original video-ti delete kora
         try:
             await message.delete()
         except Exception as e:
-            logger.error(f"Failed to delete original video (Check 'Delete Messages' admin permission): {e}")
+            logger.error(f"Failed to delete original video: {e}")
 
     except Exception as e:
         logger.error(f"Error in auto replace workflow: {e}", exc_info=True)
