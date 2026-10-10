@@ -21,7 +21,6 @@ file_auto_delete = humanize.naturaldelta(jishudeveloper)
 
 
 async def send_styled_start(client: Client, message: Message):
-    """User subscribed thakuk ba na thakuk — eki styled caption, buttons ebong random image pathabe"""
     buttons = []
     
     # 1. Force Sub Channel join buttons
@@ -33,41 +32,52 @@ async def send_styled_start(client: Client, message: Message):
         except Exception as e:
             print(f"Error getting invite link for channel {channel_id}: {e}")
 
-    # 2. Try Again / Verify Button (Jodi deep link thake tobe deep link soho hobe)
+    # 2. Try Again / Verify Button
     bot_username = client.username or (await client.get_me()).username
     deep_link = message.command[1] if (message.command and len(message.command) > 1) else ""
     verify_url = f"https://t.me/{bot_username}?start={deep_link}" if deep_link else f"https://t.me/{bot_username}?start"
     
     buttons.append([InlineKeyboardButton(text='🔄 Try Again / Verify', url=verify_url)])
 
-    # 3. Exact custom message formatting
+    # 3. Custom text message
     user_name = message.from_user.first_name if message.from_user else "User"
-
     caption_text = f"""Hey {user_name}
 Welcome to @{bot_username}
 
 🥵🥵Join Below Channels And Tap Verify To Continue 🍑🍑"""
 
-    # 4. Random Image fetch kora (Memory buffer theke)
+    # 4. Direct URL ba Buffer Image Send Kora
     raw_url = random.choice(START_PICS) if START_PICS else None
-    photo_buffer = None
-
+    
     if raw_url:
+        # A. Shasorir direct image URL hole Telegram instantly link theke load korbe
+        if raw_url.startswith("http") and (raw_url.endswith(".jpg") or raw_url.endswith(".png") or "graph.org" in raw_url or "telegra.ph" in raw_url):
+            try:
+                await message.reply_photo(
+                    photo=raw_url,
+                    caption=caption_text,
+                    reply_markup=InlineKeyboardMarkup(buttons),
+                    quote=True
+                )
+                return
+            except Exception as e:
+                print(f"Direct photo send failed, trying buffer fallback: {e}")
+
+        # B. Fallback: API ba buffer download stream
         photo_buffer = await get_random_pic_data(raw_url)
+        if photo_buffer:
+            try:
+                await message.reply_photo(
+                    photo=photo_buffer,
+                    caption=caption_text,
+                    reply_markup=InlineKeyboardMarkup(buttons),
+                    quote=True
+                )
+                return
+            except Exception as e:
+                print(f"Buffer photo send failed: {e}")
 
-    # 5. Image attach kore direct memory stream send kora (Fallback: text)
-    if photo_buffer:
-        try:
-            await message.reply_photo(
-                photo=photo_buffer,
-                caption=caption_text,
-                reply_markup=InlineKeyboardMarkup(buttons),
-                quote=True
-            )
-            return
-        except Exception as e:
-            print(f"Failed to send start photo: {e}")
-
+    # C. Kono karone fail hole plain text
     await message.reply_text(
         text=caption_text,
         reply_markup=InlineKeyboardMarkup(buttons),
@@ -86,14 +96,13 @@ async def start_command(client: Client, message: Message):
             pass
 
     text = message.text
-    # Jodi user kono file ba verification link click kore ashe (Deep Link)
     if len(text) > 7:
         try:
             base64_string = text.split(" ", 1)[1]
         except:
             return
 
-        # --- 1. Token Verification Process ---
+        # 1. Token Verification Process
         if base64_string.startswith("verify_"):
             token = base64_string.split("verify_", 1)[1]
             saved_token = await get_verify_token(user_id)
@@ -107,7 +116,7 @@ async def start_command(client: Client, message: Message):
                 await message.reply_text("<b>❌ Invalid or Expired Token!</b>\n\nOnugroho kore abar chesta korun.")
             return
 
-        # --- 2. Check Verification for File Access ---
+        # 2. Check Verification for File Access
         if IS_VERIFY and (user_id not in ADMINS) and (SHORTLINK_URL and SHORTLINK_API):
             if not await is_user_verified(user_id):
                 chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -130,7 +139,7 @@ async def start_command(client: Client, message: Message):
                 )
                 return
 
-        # --- 3. Normal File Retrieval ---
+        # 3. File Retrieval
         decoded_string = await decode(base64_string)
         argument = decoded_string.split("-")
         if len(argument) == 3:
@@ -208,11 +217,9 @@ async def start_command(client: Client, message: Message):
         asyncio.create_task(delete_files(madflix_msgs, client, k))
         return
 
-    # User already subscribed thakleo shudhu /start dile exact new photo + message ashbe
     await send_styled_start(client, message)
 
 
-# User channel-e join na thakle shudhu /start dile eki notun photo + message ashbe
 @Bot.on_message(filters.command('start') & filters.private & ~subscribed)
 async def not_joined(client: Client, message: Message):
     await send_styled_start(client, message)
