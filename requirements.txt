@@ -1,4 +1,4 @@
-hydrogram
+pyrogram
 TgCrypto
 pyromod
 pymongo[srv]
