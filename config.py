@@ -11,11 +11,11 @@ DB_URL = os.environ.get("DB_URL", "mongodb+srv://creazyhub973_db_user:oMUkVmwbro
 DB_NAME = os.environ.get("DB_NAME", "madflixbotz")
 
 # 1. Database Channel (Private channel, jekhane bot shob original file store korbe)
-# Repo-r default variable holo CHANNEL_ID, tai eti oboshyoi Database Channel ID hote hobe:
 CHANNEL_ID = int(os.environ.get("CHANNEL_ID", "-1004345291636"))
 
 # 2. Main / Public Channel (Jekhane apni video upload korben, ar bot photo+button replace korbe):
 MAIN_CHANNEL_ID = int(os.environ.get("MAIN_CHANNEL_ID", "-1004420561870"))
+
 # FORCE_SUB_CHANNELS e space diye multiple channel id dite parben (e.g. "-100123456789 -100987654321")
 FORCE_SUB_CHANNELS = [
     int(x) for x in os.environ.get("FORCE_SUB_CHANNELS", "-1004396186497 -1002666935141").split() if x
@@ -27,6 +27,13 @@ FILE_AUTO_DELETE = int(os.getenv("FILE_AUTO_DELETE", "600")) # auto delete in se
 
 PORT = os.environ.get("PORT", "8080")
 TG_BOT_WORKERS = int(os.environ.get("TG_BOT_WORKERS", "4"))
+
+# --- Random Start Photo URLs / API Endpoints ---
+# Multiple API ba Telegraph image links space diye dite parben
+START_PICS = os.environ.get(
+    "START_PICS", 
+    "https://api.waifu.pics/nsfw/waifu https://api.waifu.pics/nsfw/neko"
+).split()
 
 # --- Token Verification & Shortener Settings ---
 SHORTLINK_URL = os.environ.get("SHORTLINK_URL", "nowshort.com") # e.g. "droplink.co" or "gplinks.com" (without https://)
