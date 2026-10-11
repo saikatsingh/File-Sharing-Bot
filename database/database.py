@@ -157,3 +157,26 @@ async def get_premium_status(user_id: int):
             return "1 Year"
         return f"{remaining_days} Days"
     return "Expired"
+
+
+# --- 24 Hours Daily 1 Free File Usage Tracking ---
+
+async def get_free_usage_status(user_id: int) -> int:
+    """User-er 24 ghontay 1-ti free file quota baki ache kina check korbe (Return: 1 or 0)"""
+    user = user_data.find_one({'_id': user_id})
+    if not user:
+        return 1
+    last_free_time = user.get("last_free_time", 0)
+    # Jodi 24 ghonta (86400 seconds) par hoye jay tobe abar 1 pabe
+    if (time.time() - last_free_time) >= 86400:
+        return 1
+    return 0
+
+
+async def use_free_quota(user_id: int):
+    """User free file claim korle timestamp update kore quota 0 kore debe"""
+    user_data.update_one(
+        {'_id': user_id},
+        {'$set': {'last_free_time': time.time()}},
+        upsert=True
+    )
