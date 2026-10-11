@@ -225,21 +225,27 @@ async def check_verification_callback(client: Client, query: CallbackQuery):
     user_id = query.from_user.id
 
     try:
-        # 1. Prothome Force-sub check kora
+        # Shobar aage instant callback acknowledgement jate loading clock na ghure
+        await query.answer()
+
+        # 1. Force Subscription check kora
         sub_status = await is_subscribed(None, client, query)
         if not sub_status:
-            await query.answer("❌ You haven't joined all required channels yet! Please join and tap again.", show_alert=True)
+            await client.send_message(
+                chat_id=user_id,
+                text="<b>❌ You haven't joined all required channels yet!</b>\n\nPlease join all channels shown above and tap <b>'Try Again / Verify'</b> again."
+            )
             return
 
         # 2. Token verification status check kora
         if IS_VERIFY and (user_id not in ADMINS) and (SHORTLINK_URL and SHORTLINK_API):
             if await is_user_verified(user_id):
-                await query.answer(f"✅ You are already verified! Enjoy unlimited access for {verify_expire_time}.", show_alert=True)
+                await client.send_message(
+                    chat_id=user_id,
+                    text=f"<b>✅ You are already verified!</b>\n\nYou have unrestricted access for <b>{verify_expire_time}</b>. Enjoy downloading your files!"
+                )
                 return
             else:
-                # Immediate acknowledgment jate button freeze na hoy
-                await query.answer("🔄 Generating verification link...", show_alert=False)
-                
                 chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
                 random_token = ''.join(random.choices(chars, k=10))
                 await update_verify_status(user_id, random_token)
@@ -251,19 +257,31 @@ async def check_verification_callback(client: Client, query: CallbackQuery):
                     [InlineKeyboardButton("🔓 Verify Token (Click Here)", url=shortened_url)],
                     [InlineKeyboardButton("Tutorial (How To Verify)", url=VERIFY_TUTORIAL)]
                 ]
-                await query.message.reply_text(
-                    f"<b>⚠️ Access Denied! Verification Required.</b>\n\n"
-                    f"You must complete token verification to use this bot.\n"
-                    f"Click on <b>'Verify Token'</b> below to get access (Valid for <b>{verify_expire_time}</b>).",
+                await client.send_message(
+                    chat_id=user_id,
+                    text=(
+                        f"<b>⚠️ Access Denied! Verification Required.</b>\n\n"
+                        f"You must complete token verification to use this bot.\n\n"
+                        f"Click on <b>'Verify Token'</b> below to get access (Valid for <b>{verify_expire_time}</b>)."
+                    ),
                     reply_markup=InlineKeyboardMarkup(verify_buttons),
                     protect_content=True
                 )
                 return
         else:
-            await query.answer("✅ All channels verified! You have full access.", show_alert=True)
+            await client.send_message(
+                chat_id=user_id,
+                text="<b>✅ You are verified!</b>\n\nYou have full access to this bot."
+            )
     except Exception as e:
         print(f"Error in check_verification callback: {e}")
-        await query.answer("Something went wrong! Please try again.", show_alert=True)
+        try:
+            await client.send_message(
+                chat_id=user_id,
+                text="<b>⚠️ Something went wrong!</b> Please send /start and try again."
+            )
+        except Exception:
+            pass
 
 
 @Bot.on_message(filters.command('users') & filters.private & filters.user(ADMINS))
