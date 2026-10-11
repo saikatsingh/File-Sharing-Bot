@@ -8,8 +8,8 @@ from datetime import datetime
 from config import API_HASH, API_ID, LOGGER, BOT_TOKEN, TG_BOT_WORKERS, FORCE_SUB_CHANNEL, CHANNEL_ID, PORT
 import pyrogram.utils
 
-pyrogram.utils.MIN_CHANNEL_ID = -1009999999999
-
+# টেলিগ্রামের দীর্ঘ চ্যানেল আইডির জন্য নিরাপদ রেঞ্জ
+pyrogram.utils.MIN_CHANNEL_ID = -100999999999999
 
 
 class Bot(Client):
@@ -29,52 +29,45 @@ class Bot(Client):
         usr_bot_me = await self.get_me()
         self.uptime = datetime.now()
 
+        # ফোর্স সাব চ্যানেল যাচাই
         if FORCE_SUB_CHANNEL:
             try:
-                link = (await self.get_chat(FORCE_SUB_CHANNEL)).invite_link
+                chat = await self.get_chat(FORCE_SUB_CHANNEL)
+                link = chat.invite_link
                 if not link:
-                    await self.export_chat_invite_link(FORCE_SUB_CHANNEL)
-                    link = (await self.get_chat(FORCE_SUB_CHANNEL)).invite_link
+                    link = await self.export_chat_invite_link(FORCE_SUB_CHANNEL)
                 self.invitelink = link
             except Exception as a:
-                self.LOGGER(__name__).warning(a)
-                self.LOGGER(__name__).warning("Bot Can't Export Invite link From Force Sub Channel!")
-                self.LOGGER(__name__).warning(f"Please Double Check The FORCE_SUB_CHANNEL Value And Make Sure Bot Is Admin In Channel With Invite Users Via Link Permission, Current Force Sub Channel Value: {FORCE_SUB_CHANNEL}")
-                self.LOGGER(__name__).info("\nBot Stopped. https://t.me/Leazy_support_group For Support")
-                sys.exit()
+                self.LOGGER(__name__).warning(f"Error getting invite link from FORCE_SUB_CHANNEL: {a}")
+                self.LOGGER(__name__).warning("Make sure the Bot is Admin in Force Sub Channel with invite permissions!")
 
+        # ডাটাবেজ চ্যানেল যাচাই
         try:
             db_channel = await self.get_chat(CHANNEL_ID)
             self.db_channel = db_channel
-            test = await self.send_message(chat_id = db_channel.id, text = "Hey 🖐")
+            test = await self.send_message(chat_id=db_channel.id, text="Hey 🖐")
             await test.delete()
         except Exception as e:
             self.LOGGER(__name__).warning(e)
-            self.LOGGER(__name__).warning(f"Make Sure Bot Is Admin In DB Channel, And Double Check The CHANNEL_ID Value, Current Value: {CHANNEL_ID}")
-            self.LOGGER(__name__).info("\nBot Stopped. Join https://t.me/Leazy_support_group For Support")
+            self.LOGGER(__name__).warning(f"Make sure Bot is Admin in DB Channel, Current CHANNEL_ID: {CHANNEL_ID}")
+            self.LOGGER(__name__).info("\nBot Stopped. Join support group for help.")
             sys.exit()
 
         self.set_parse_mode(ParseMode.HTML)
-        self.LOGGER(__name__).info(f"Bot Running...!\n\nCreated By \nhttps://t.me/creazy_updates_zone")
-        self.LOGGER(__name__).info(f"""ミ💖 MADFLIX BOTZ 💖彡""")
+        self.LOGGER(__name__).info("Bot Running...!")
+        self.LOGGER(__name__).info("ミ💖 MADFLIX BOTZ 💖彡")
         self.username = usr_bot_me.username
-        #web-response
-        app = web.AppRunner(await web_server())
-        await app.setup()
-        bind_address = "0.0.0.0"
-        await web.TCPSite(app, bind_address, PORT).start()
+
+        # কয়ব হেলথ চেকের জন্য ওয়েব সার্ভার
+        try:
+            app = web.AppRunner(await web_server())
+            await app.setup()
+            bind_address = "0.0.0.0"
+            server_port = int(PORT) if str(PORT).isdigit() else 8080
+            await web.TCPSite(app, bind_address, server_port).start()
+        except Exception as err:
+            self.LOGGER(__name__).warning(f"Web server failed to start: {err}")
 
     async def stop(self, *args):
         await super().stop()
         self.LOGGER(__name__).info("Bot Stopped...")
-            
-
-
-
-
-
-# Jishu Developer 
-# Don't Remove Credit 🥺
-# Telegram Channel @Madflix_Bots
-# Backup Channel @JishuBotz
-# Developer @JishuDeveloper
