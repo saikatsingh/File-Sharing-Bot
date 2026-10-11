@@ -14,7 +14,12 @@ from pyrogram.errors import FloodWait
 async def is_subscribed(filter, client, update):
     if not FORCE_SUB_CHANNELS:
         return True
-    user_id = update.from_user.id
+
+    # Safe user_id detection for both Message and CallbackQuery
+    user_id = update.from_user.id if getattr(update, "from_user", None) else None
+    if not user_id:
+        return True
+
     if user_id in ADMINS:
         return True
     
@@ -168,7 +173,7 @@ async def get_random_pic_data(api_url: str):
         async with aiohttp.ClientSession(headers=headers) as session:
             target_url = api_url
             
-            # 1. Jodi API hoy, aage JSON theke direct image link extract korbe
+            # 1. API endpoint hole JSON theke URL neoa
             if "nekos.best" in api_url:
                 async with session.get(api_url, timeout=5) as resp:
                     if resp.status == 200:
@@ -188,7 +193,7 @@ async def get_random_pic_data(api_url: str):
                         if isinstance(data, dict) and "url" in data:
                             target_url = data["url"]
 
-            # 2. Direct binary bytes download kore RAM buffer toiri kora
+            # 2. Binary buffer download kora
             async with session.get(target_url, timeout=8) as img_resp:
                 if img_resp.status == 200:
                     img_bytes = await img_resp.read()
