@@ -41,8 +41,8 @@ VERIFY_EXPIRE = int(os.environ.get("VERIFY_EXPIRE", "28800"))  # 8 hours = 28800
 VERIFY_TUTORIAL = os.environ.get("VERIFY_TUTORIAL", "https://t.me/How_to_open_file_to_link")
 
 # --- Premium / Indian UPI Payment Settings ---
-UPI_ID = os.environ.get("UPI_ID", "your_upi_id@okhdfcbank")  # Apnar UPI ID boshaban
-UPI_QR_URL = os.environ.get("UPI_QR_URL", "https://graph.org/file/56b5deb73f3b132e2bb73.jpg")  # Apnar Scanner QR photo-r link
+UPI_ID = os.environ.get("UPI_ID", "mailmetosaikat676@okhdfcbank")  # Apnar UPI ID boshaban
+UPI_QR_URL = os.environ.get("UPI_QR_URL", "https://graph.org/file/e5ec2cecc24ce6c1dbccf-9bb7df8e3e0d62d6d2.jpg")  # Apnar Scanner QR photo-r link
 
 # Reference layout onujayi exact text format
 PREMIUM_PLANS_TEXT = os.environ.get(
