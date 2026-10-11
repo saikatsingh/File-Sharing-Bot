@@ -12,7 +12,8 @@ from config import (
 from helper_func import subscribed, encode, decode, get_messages, get_shortlink, get_random_pic_data
 from database.database import (
     add_user, del_user, full_userbase, present_user, 
-    is_user_verified, update_verify_status, get_verify_token, set_verified
+    is_user_verified, update_verify_status, get_verify_token, set_verified,
+    is_premium_user  # Premium check import kora holo
 )
 
 file_auto_delete = humanize.naturaldelta(FILE_AUTO_DELETE)
@@ -115,7 +116,7 @@ async def start_command(client: Client, message: Message):
         except:
             return
 
-        # 1. Token Verification Return Process (User token link complete kore fire ashle)
+        # 1. Token Verification Return Process (User shortlink pass kore fire ashle)
         if base64_string.startswith("verify_"):
             token = base64_string.split("verify_", 1)[1]
             saved_token = await get_verify_token(user_id)
@@ -130,8 +131,11 @@ async def start_command(client: Client, message: Message):
                 await message.reply_text("<b>❌ Invalid or Expired Token!</b>\n\nPlease try generating a new token.", parse_mode=ParseMode.HTML)
             return
 
-        # 2. Check 8 Hours Verification for File Access
-        if IS_VERIFY and (user_id not in ADMINS) and (SHORTLINK_URL and SHORTLINK_API):
+        # 2. Check Premium & 8 Hours Token Verification for File Access
+        # Jodi user Premium hoy ba Admin hoy -> Kono Token bypass lagbe na, direct file pabe!
+        if await is_premium_user(user_id) or (user_id in ADMINS):
+            pass  # Direct file retrieval section-e chole jabe
+        elif IS_VERIFY and (SHORTLINK_URL and SHORTLINK_API):
             if not await is_user_verified(user_id):
                 chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
                 random_token = ''.join(random.choices(chars, k=10))
@@ -139,15 +143,18 @@ async def start_command(client: Client, message: Message):
                 
                 verification_url = f"https://t.me/{client.username}?start=verify_{random_token}"
                 shortened_url = await get_shortlink(verification_url)
+                bot_username = client.username or (await client.get_me()).username
                 
                 verify_buttons = [
                     [InlineKeyboardButton("🔓 Verify Token (Click Here)", url=shortened_url)],
-                    [InlineKeyboardButton("Tutorial (How To Verify)", url=VERIFY_TUTORIAL)]
+                    [InlineKeyboardButton("Tutorial (How To Verify)", url=VERIFY_TUTORIAL)],
+                    [InlineKeyboardButton("⚡ Buy Premium (No Ads)", url=f"https://t.me/{bot_username}?start=premium")]
                 ]
                 await message.reply_text(
                     f"<b>⚠️ Access Denied! Verification Required.</b>\n\n"
                     f"You must complete token verification to download this file.\n\n"
-                    f"Click on <b>'Verify Token'</b> below to get access (Valid for <b>{verify_expire_time}</b>).",
+                    f"Click on <b>'Verify Token'</b> below to get access (Valid for <b>{verify_expire_time}</b>) "
+                    f"or get <b>Premium</b> to skip all ads forever!",
                     reply_markup=InlineKeyboardMarkup(verify_buttons),
                     parse_mode=ParseMode.HTML,
                     protect_content=True
