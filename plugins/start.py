@@ -13,7 +13,7 @@ from helper_func import subscribed, encode, decode, get_messages, get_shortlink,
 from database.database import (
     add_user, del_user, full_userbase, present_user, 
     is_user_verified, update_verify_status, get_verify_token, set_verified,
-    is_premium_user
+    is_premium_user, get_premium_status
 )
 
 file_auto_delete = humanize.naturaldelta(FILE_AUTO_DELETE)
@@ -24,23 +24,21 @@ async def get_start_buttons(client: Client, deep_link: str = ""):
     buttons = []
     bot_username = client.username or (await client.get_me()).username
     
-    # 1. Force Sub Channel-er Real Invite Link Fetch Kora
+    # 1. Force Sub Channels
     for idx, channel_id in enumerate(FORCE_SUB_CHANNELS, start=1):
         try:
             chat = await client.get_chat(channel_id)
             invite_link = chat.invite_link or await client.export_chat_invite_link(channel_id)
             buttons.append([InlineKeyboardButton(text=f"👉 Join Channel {idx} 👈", url=invite_link)])
         except Exception as e:
-            print(f"Force Sub Link Error for {channel_id}: {e}")
-            # Fallback
             buttons.append([InlineKeyboardButton(text=f"👉 Join Channel {idx} 👈", url=f"https://t.me/{bot_username}")])
 
-    # 2. Deep link thakle Try Again
+    # 2. File link thakle Try Again
     if deep_link:
         try_again_url = f"https://t.me/{bot_username}?start={deep_link}"
         buttons.append([InlineKeyboardButton(text="🔄 Try Again", url=try_again_url)])
 
-    # 3. Screenshot onujayi Menu Buttons
+    # 3. Main Menu Buttons
     buttons.append([
         InlineKeyboardButton("⭐ PREMIUM", callback_data="open_premium_menu"),
         InlineKeyboardButton("👨‍💼 ADMIN", url=f"tg://openmessage?user_id={OWNER_ID}")
@@ -101,7 +99,7 @@ I can store private files in Specified Channel and other users can access it fro
     )
 
 
-# --- JARA JOIN KORENI TADER JONNO ---
+# --- JARA SUBSCRIBED NAY TADER JONNO HANDLER ---
 @Bot.on_message(filters.command('start') & filters.private & ~subscribed)
 async def not_joined(client: Client, message: Message):
     text = message.text
@@ -114,7 +112,7 @@ async def not_joined(client: Client, message: Message):
     await send_styled_start(client, message, deep_link=deep_link)
 
 
-# --- MAIN START HANDLER ---
+# --- JARA SUBSCRIBED TADER JONNO MAIN START HANDLER ---
 @Bot.on_message(filters.command('start') & filters.private & subscribed)
 async def start_command(client: Client, message: Message):
     user_id = message.from_user.id
@@ -131,7 +129,17 @@ async def start_command(client: Client, message: Message):
         except Exception:
             return
 
-        # 1. Token Verification Return
+        # Direct /start premium link ashle
+        if base64_string == "premium":
+            text_p = f"""👋 <b>Hello {message.from_user.first_name}</b>\n\n🎖 <b>Want Premium?</b>\n\n› Choose a method below:\n\n╭ <b>💳 Pay with UPI (Instant activation)</b> ❞"""
+            btns_p = [
+                [InlineKeyboardButton("💳 Pay with UPI", callback_data="view_upi_plans")],
+                [InlineKeyboardButton("🔒 Close", callback_data="close_message")]
+            ]
+            await message.reply_text(text_p, reply_markup=InlineKeyboardMarkup(btns_p), parse_mode=ParseMode.HTML)
+            return
+
+        # 1. Token Verification Return Process
         if base64_string.startswith("verify_"):
             token = base64_string.split("verify_", 1)[1]
             saved_token = await get_verify_token(user_id)
@@ -146,28 +154,30 @@ async def start_command(client: Client, message: Message):
                 await message.reply_text("<b>❌ Invalid or Expired Token!</b>\n\nPlease try generating a new token.", parse_mode=ParseMode.HTML)
             return
 
-        # 2. Premium Bypass & Token Verification Check
+        # 2. Check Premium & Verification for File Access
         if await is_premium_user(user_id) or (user_id in ADMINS):
-            pass  # Direct file access
+            pass  # Premium users get direct file access!
         elif IS_VERIFY and (SHORTLINK_URL and SHORTLINK_API):
             if not await is_user_verified(user_id):
                 chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
                 random_token = ''.join(random.choices(chars, k=10))
                 await update_verify_status(user_id, random_token)
                 
-                verification_url = f"https://t.me/{client.username}?start=verify_{random_token}"
+                bot_username = client.username or (await client.get_me()).username
+                verification_url = f"https://t.me/{bot_username}?start=verify_{random_token}"
                 shortened_url = await get_shortlink(verification_url)
                 
+                # 'Buy Premium' e direct deep-link dewa holo jate 100% kaj kore
                 verify_buttons = [
                     [InlineKeyboardButton("🔓 Verify Token (Click Here)", url=shortened_url)],
                     [InlineKeyboardButton("Tutorial (How To Verify)", url=VERIFY_TUTORIAL)],
-                    [InlineKeyboardButton("⭐ Buy Premium (No Ads)", callback_data="open_premium_menu")]
+                    [InlineKeyboardButton("⭐ Buy Premium (No Ads)", url=f"https://t.me/{bot_username}?start=premium")]
                 ]
                 await message.reply_text(
                     f"<b>⚠️ Access Denied! Verification Required.</b>\n\n"
                     f"You must complete token verification to download this file.\n\n"
                     f"Click on <b>'Verify Token'</b> below to get access (Valid for <b>{verify_expire_time}</b>) "
-                    f"or tap <b>Buy Premium</b> to skip all ads!",
+                    f"or tap <b>Buy Premium</b> to skip all ads forever!",
                     reply_markup=InlineKeyboardMarkup(verify_buttons),
                     parse_mode=ParseMode.HTML,
                     protect_content=True
@@ -257,7 +267,9 @@ async def start_command(client: Client, message: Message):
     await send_styled_start(client, message, deep_link="")
 
 
-# --- Close Button Callback ---
+# ================= CALLBACK QUERY HANDLERS =================
+
+# 1. Close Button
 @Bot.on_callback_query(filters.regex('^close_message$'))
 async def close_callback(client: Client, query: CallbackQuery):
     await query.answer()
@@ -267,7 +279,32 @@ async def close_callback(client: Client, query: CallbackQuery):
         pass
 
 
-# --- Help Menu Callback ---
+# 2. Premium Menu Button
+@Bot.on_callback_query(filters.regex('^open_premium_menu$'))
+async def premium_menu_callback(client: Client, query: CallbackQuery):
+    await query.answer()
+    user_id = query.from_user.id
+    if await is_premium_user(user_id):
+        status = await get_premium_status(user_id)
+        await query.answer(f"✅ You are already Premium!\nValidity: {status}", show_alert=True)
+        return
+
+    text = f"""👋 <b>Hello {query.from_user.first_name}</b>\n\n🎖 <b>Want Premium?</b>\n\n› Choose a method below:\n\n╭ <b>💳 Pay with UPI (Instant activation)</b> ❞"""
+    buttons = [
+        [InlineKeyboardButton("💳 Pay with UPI", callback_data="view_upi_plans")],
+        [InlineKeyboardButton("🔒 Close", callback_data="close_message")]
+    ]
+    
+    # Message-er niche fresh dialog hishebe send kora
+    await client.send_message(
+        chat_id=user_id,
+        text=text,
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode=ParseMode.HTML
+    )
+
+
+# 3. Help Menu Button
 @Bot.on_callback_query(filters.regex('^open_help_menu$'))
 async def help_callback(client: Client, query: CallbackQuery):
     await query.answer()
@@ -307,10 +344,16 @@ async def help_callback(client: Client, query: CallbackQuery):
             )
     except MessageNotModified:
         pass
-    except Exception as e:
-        print(f"Help menu error: {e}")
+    except Exception:
+        await client.send_message(
+            chat_id=query.from_user.id,
+            text=help_text,
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=ParseMode.HTML
+        )
 
 
+# 4. Back to Start Home
 @Bot.on_callback_query(filters.regex('^back_to_start_home$'))
 async def back_to_start_callback(client: Client, query: CallbackQuery):
     await query.answer()
@@ -335,8 +378,6 @@ I can store private files in Specified Channel and other users can access it fro
             )
     except MessageNotModified:
         pass
-    except Exception as e:
-        print(f"Back to start error: {e}")
 
 
 @Bot.on_message(filters.command('users') & filters.private & filters.user(ADMINS))
