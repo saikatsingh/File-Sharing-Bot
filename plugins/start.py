@@ -1,7 +1,7 @@
 import os, asyncio, humanize, random
 from pyrogram import Client, filters, __version__
 from pyrogram.enums import ParseMode
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated
 from bot import Bot
 from config import (
@@ -9,7 +9,7 @@ from config import (
     PROTECT_CONTENT, FILE_AUTO_DELETE, IS_VERIFY, SHORTLINK_URL, SHORTLINK_API, VERIFY_TUTORIAL,
     VERIFY_EXPIRE, FORCE_SUB_CHANNELS, START_PICS
 )
-from helper_func import subscribed, is_subscribed, encode, decode, get_messages, get_shortlink, get_random_pic_data
+from helper_func import subscribed, encode, decode, get_messages, get_shortlink, get_random_pic_data
 from database.database import (
     add_user, del_user, full_userbase, present_user, 
     is_user_verified, update_verify_status, get_verify_token, set_verified
@@ -19,7 +19,7 @@ file_auto_delete = humanize.naturaldelta(FILE_AUTO_DELETE)
 verify_expire_time = humanize.naturaldelta(VERIFY_EXPIRE)
 
 
-async def send_styled_start(client: Client, message: Message):
+async def send_styled_start(client: Client, message: Message, deep_link: str = ""):
     buttons = []
     
     # 1. Force Sub Channel join buttons
@@ -31,19 +31,24 @@ async def send_styled_start(client: Client, message: Message):
         except Exception as e:
             print(f"Error getting invite link for channel {channel_id}: {e}")
 
-    # 2. Interactive Verify Button (Callback)
-    buttons.append([InlineKeyboardButton(text='🔄 Try Again / Verify', callback_data='check_verification')])
-
-    # 3. Custom text message (English)
-    user_name = message.from_user.first_name if message.from_user else "User"
     bot_username = client.username or (await client.get_me()).username
 
+    # 2. File link theke ashle tokhon-i sudhu 'Try Again' button ashbe
+    if deep_link:
+        try_again_url = f"https://t.me/{bot_username}?start={deep_link}"
+        buttons.append([InlineKeyboardButton(text="🔄 Try Again", url=try_again_url)])
+
+    # 3. Custom text message
+    user_name = message.from_user.first_name if message.from_user else "User"
     caption_text = f"""Hey {user_name}
 Welcome to @{bot_username}
 
-🥵🥵Join Below Channels And Tap Verify To Continue 🍑🍑"""
+🥵🥵Join Below Channels And Tap Try Again To Continue 🍑🍑""" if deep_link else f"""Hey {user_name}
+Welcome to @{bot_username}
 
-    # 4. Direct URL or Memory Buffer Image
+🥵🥵Join Below Channels To Continue 🍑🍑"""
+
+    # 4. Image fetch & send
     raw_url = random.choice(START_PICS) if START_PICS else None
     
     if raw_url:
@@ -80,6 +85,20 @@ Welcome to @{bot_username}
     )
 
 
+# --- JARA SUBSCRIBED NAY TADER JONNO HANDLER ---
+@Bot.on_message(filters.command('start') & filters.private & ~subscribed)
+async def not_joined(client: Client, message: Message):
+    text = message.text
+    deep_link = ""
+    if len(text) > 7:
+        try:
+            deep_link = text.split(" ", 1)[1]
+        except:
+            deep_link = ""
+    await send_styled_start(client, message, deep_link=deep_link)
+
+
+# --- JARA SUBSCRIBED TADER JONNO MAIN START HANDLER ---
 @Bot.on_message(filters.command('start') & filters.private & subscribed)
 async def start_command(client: Client, message: Message):
     user_id = message.from_user.id
@@ -96,7 +115,7 @@ async def start_command(client: Client, message: Message):
         except:
             return
 
-        # --- 1. Token Verification Process ---
+        # 1. Token Verification Return Process (User token link complete kore fire ashle)
         if base64_string.startswith("verify_"):
             token = base64_string.split("verify_", 1)[1]
             saved_token = await get_verify_token(user_id)
@@ -111,7 +130,7 @@ async def start_command(client: Client, message: Message):
                 await message.reply_text("<b>❌ Invalid or Expired Token!</b>\n\nPlease try generating a new token.", parse_mode=ParseMode.HTML)
             return
 
-        # --- 2. Check Verification for File Access ---
+        # 2. Check 8 Hours Verification for File Access
         if IS_VERIFY and (user_id not in ADMINS) and (SHORTLINK_URL and SHORTLINK_API):
             if not await is_user_verified(user_id):
                 chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -127,7 +146,7 @@ async def start_command(client: Client, message: Message):
                 ]
                 await message.reply_text(
                     f"<b>⚠️ Access Denied! Verification Required.</b>\n\n"
-                    f"You must verify your token to download this file.\n"
+                    f"You must complete token verification to download this file.\n\n"
                     f"Click on <b>'Verify Token'</b> below to get access (Valid for <b>{verify_expire_time}</b>).",
                     reply_markup=InlineKeyboardMarkup(verify_buttons),
                     parse_mode=ParseMode.HTML,
@@ -135,7 +154,7 @@ async def start_command(client: Client, message: Message):
                 )
                 return
 
-        # --- 3. File Retrieval ---
+        # 3. Normal File Retrieval
         decoded_string = await decode(base64_string)
         argument = decoded_string.split("-")
         if len(argument) == 3:
@@ -214,84 +233,8 @@ async def start_command(client: Client, message: Message):
         asyncio.create_task(delete_files(madflix_msgs, client, k))
         return
 
-    await send_styled_start(client, message)
-
-
-@Bot.on_message(filters.command('start') & filters.private & ~subscribed)
-async def not_joined(client: Client, message: Message):
-    await send_styled_start(client, message)
-
-
-# --- Callback Handler with 100% Reliable Matching Filter ---
-check_filter = filters.create(lambda _, __, query: query.data == "check_verification")
-
-@Bot.on_callback_query(check_filter)
-async def check_verification_callback(client: Client, query: CallbackQuery):
-    user_id = query.from_user.id
-
-    try:
-        # Shobar aage loader dismiss kora
-        await query.answer()
-
-        # 1. Force Subscription check
-        sub_status = await is_subscribed(None, client, query)
-        if not sub_status:
-            await client.send_message(
-                chat_id=user_id,
-                text="<b>❌ You haven't joined all required channels yet!</b>\n\nPlease join all channels shown above and tap <b>'Try Again / Verify'</b> again.",
-                parse_mode=ParseMode.HTML
-            )
-            return
-
-        # 2. Token verification check
-        if IS_VERIFY and (user_id not in ADMINS) and (SHORTLINK_URL and SHORTLINK_API):
-            if await is_user_verified(user_id):
-                await client.send_message(
-                    chat_id=user_id,
-                    text=f"<b>✅ You are already verified!</b>\n\nYou have unrestricted access for <b>{verify_expire_time}</b>. Enjoy downloading your files!",
-                    parse_mode=ParseMode.HTML
-                )
-                return
-            else:
-                chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-                random_token = ''.join(random.choices(chars, k=10))
-                await update_verify_status(user_id, random_token)
-                
-                verification_url = f"https://t.me/{client.username}?start=verify_{random_token}"
-                shortened_url = await get_shortlink(verification_url)
-                
-                verify_buttons = [
-                    [InlineKeyboardButton("🔓 Verify Token (Click Here)", url=shortened_url)],
-                    [InlineKeyboardButton("Tutorial (How To Verify)", url=VERIFY_TUTORIAL)]
-                ]
-                await client.send_message(
-                    chat_id=user_id,
-                    text=(
-                        f"<b>⚠️ Access Denied! Verification Required.</b>\n\n"
-                        f"You must complete token verification to use this bot.\n\n"
-                        f"Click on <b>'Verify Token'</b> below to get access (Valid for <b>{verify_expire_time}</b>)."
-                    ),
-                    reply_markup=InlineKeyboardMarkup(verify_buttons),
-                    parse_mode=ParseMode.HTML,
-                    protect_content=True
-                )
-                return
-        else:
-            await client.send_message(
-                chat_id=user_id,
-                text="<b>✅ You are verified!</b>\n\nYou have full access to this bot.",
-                parse_mode=ParseMode.HTML
-            )
-    except Exception as e:
-        print(f"Error in check_verification callback: {e}")
-        try:
-            await client.send_message(
-                chat_id=user_id,
-                text="<b>⚠️ Something went wrong!</b> Please send /start again.",
-                parse_mode=ParseMode.HTML
-            )
-        except Exception:
-            pass
+    # Normal /start command (Kono file code chara)
+    await send_styled_start(client, message, deep_link="")
 
 
 @Bot.on_message(filters.command('users') & filters.private & filters.user(ADMINS))
