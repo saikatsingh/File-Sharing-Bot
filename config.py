@@ -27,7 +27,7 @@ FILE_AUTO_DELETE = int(os.getenv("FILE_AUTO_DELETE", "600"))
 PORT = os.environ.get("PORT", "8080")
 TG_BOT_WORKERS = int(os.environ.get("TG_BOT_WORKERS", "4"))
 
-# --- Direct Telegraph / Graph.org Image Links (Space diye apnar link gulo boshabenk) ---
+# --- Direct Telegraph / Graph.org Image Links ---
 START_PICS = os.environ.get(
     "START_PICS", 
     "https://graph.org/file/56b5deb73f3b132e2bb73.jpg https://graph.org/file/5303692652d91d52180c2.jpg https://graph.org/file/425b6f46efc7c6d64105f.jpg https://graph.org/file/876867e761c6c7a29855b.jpg"
@@ -39,6 +39,24 @@ SHORTLINK_API = os.environ.get("SHORTLINK_API", "a769587e8ee75b1cec273858ff61623
 IS_VERIFY = True if os.environ.get("IS_VERIFY", "True").lower() == "true" else False
 VERIFY_EXPIRE = int(os.environ.get("VERIFY_EXPIRE", "28800"))  # 8 hours = 28800 seconds
 VERIFY_TUTORIAL = os.environ.get("VERIFY_TUTORIAL", "https://t.me/How_to_open_file_to_link")
+
+# --- Premium / Indian UPI Payment Settings ---
+UPI_ID = os.environ.get("UPI_ID", "your_upi_id@okhdfcbank")  # Apnar personal/merchant UPI ID boshaban
+UPI_QR_URL = os.environ.get("UPI_QR_URL", "https://graph.org/file/56b5deb73f3b132e2bb73.jpg")  # Apnar Scanner QR photo-r link
+
+PREMIUM_PLANS_TEXT = os.environ.get(
+    "PREMIUM_PLANS_TEXT",
+    """<b>💎 Premium Membership Plans:</b>
+
+🥉 <b>7 Days:</b> ₹29
+🥈 <b>1 Month (30 Days):</b> ₹79
+🥇 <b>Lifetime:</b> ₹199
+
+<b>✨ Premium Benefits:</b>
+• Direct Instant Download (No Shortener / No Ads)
+• No 8-hour token verification hassle
+• Instant Access to all files directly!"""
+)
 
 try:
     ADMINS = [6917766710]
@@ -57,7 +75,7 @@ USER_REPLY_TEXT = "❌ Don't Send Me Messages Directly I'm Only File Share Bot !
 DEFAULT_WELCOME_TEXT = """Hey {first}
 Welcome to @{username}
 
-🥵🥵Join Below Channels And Tap Verify To Continue 🍑🍑"""
+🥵🥵Join Below Channels And Tap Try Again To Continue 🍑🍑"""
 
 START_MSG = os.environ.get("START_MESSAGE", DEFAULT_WELCOME_TEXT)
 FORCE_MSG = os.environ.get("FORCE_SUB_MESSAGE", DEFAULT_WELCOME_TEXT)
