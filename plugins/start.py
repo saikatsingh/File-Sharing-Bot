@@ -1,4 +1,4 @@
-import os, asyncio, humanize, random
+import os, asyncio, humanize, random, time
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
@@ -13,7 +13,7 @@ from helper_func import subscribed, encode, decode, get_messages, get_shortlink,
 from database.database import (
     add_user, del_user, full_userbase, present_user, 
     is_user_verified, update_verify_status, get_verify_token, set_verified,
-    is_premium_user, get_premium_status
+    is_premium_user, get_premium_status, get_free_usage_status, use_free_quota
 )
 
 file_auto_delete = humanize.naturaldelta(FILE_AUTO_DELETE)
@@ -30,7 +30,7 @@ async def get_start_buttons(client: Client, deep_link: str = ""):
             chat = await client.get_chat(channel_id)
             invite_link = chat.invite_link or await client.export_chat_invite_link(channel_id)
             buttons.append([InlineKeyboardButton(text=f"👉 Join Channel {idx} 👈", url=invite_link)])
-        except Exception as e:
+        except Exception:
             buttons.append([InlineKeyboardButton(text=f"👉 Join Channel {idx} 👈", url=f"https://t.me/{bot_username}")])
 
     # 2. File link thakle Try Again
@@ -75,8 +75,8 @@ I can store private files in Specified Channel and other users can access it fro
                     quote=True
                 )
                 return
-            except Exception as e:
-                print(f"Photo send error: {e}")
+            except Exception:
+                pass
 
         photo_buffer = await get_random_pic_data(raw_url)
         if photo_buffer:
@@ -88,14 +88,60 @@ I can store private files in Specified Channel and other users can access it fro
                     quote=True
                 )
                 return
-            except Exception as e:
-                print(f"Buffer photo error: {e}")
+            except Exception:
+                pass
 
     await message.reply_text(
         text=caption_text,
         reply_markup=markup,
         quote=True,
         disable_web_page_preview=True
+    )
+
+
+# --- /help COMMAND HANDLER (Screenshot 1 Format) ---
+@Bot.on_message(filters.command('help') & filters.private)
+async def help_command_handler(client: Client, message: Message):
+    user_first = message.from_user.first_name or "User"
+    help_caption = f"""⁉️ <b>HELLO {user_first} ~</b>
+
+╭ <b>I AM A PRIVATE FILE SHARING BOT, MEANT TO PROVIDE FILES AND NECESSARY STUFF THROUGH SPECIAL LINK FOR SPECIFIC CHANNELS.</b> ❞
+
+╭ <b>IN ORDER TO GET THE FILES YOU HAVE TO JOIN THE ALL MENTIONED CHANNEL THAT I PROVIDE YOU TO JOIN. YOU CAN NOT ACCESS OR GET THE FILES UNLESS YOU JOINED ALL CHANNELS.</b> ❞
+
+╭ <b>SO JOIN MENTIONED CHANNELS TO GET FILES OR INITIATE MESSAGES...</b> ❞
+
+╭ <b>/help - OPEN THIS HELP MESSAGE !</b> ❞
+
+◇ <b>STILL HAVE DOUBTS, CONTACT BELOW PERSONS/GROUP AS PER YOUR NEED !</b>"""
+
+    buttons = [
+        [
+            InlineKeyboardButton("🤖 OWNER", url=f"tg://openmessage?user_id={OWNER_ID}"),
+            InlineKeyboardButton("🥰 DEVELOPER", url="https://t.me/JishuDeveloper")
+        ],
+        [
+            InlineKeyboardButton("🔒 Close", callback_data="close_message")
+        ]
+    ]
+
+    raw_url = random.choice(START_PICS) if START_PICS else None
+    if raw_url and raw_url.startswith("http"):
+        try:
+            await message.reply_photo(
+                photo=raw_url,
+                caption=help_caption,
+                reply_markup=InlineKeyboardMarkup(buttons),
+                parse_mode=ParseMode.HTML
+            )
+            return
+        except Exception:
+            pass
+
+    await message.reply_text(
+        text=help_caption,
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode=ParseMode.HTML
     )
 
 
@@ -154,35 +200,43 @@ async def start_command(client: Client, message: Message):
                 await message.reply_text("<b>❌ Invalid or Expired Token!</b>\n\nPlease try generating a new token.", parse_mode=ParseMode.HTML)
             return
 
-        # 2. Check Premium & Verification for File Access
-        if await is_premium_user(user_id) or (user_id in ADMINS):
-            pass  # Premium users get direct file access!
-        elif IS_VERIFY and (SHORTLINK_URL and SHORTLINK_API):
-            if not await is_user_verified(user_id):
-                chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-                random_token = ''.join(random.choices(chars, k=10))
-                await update_verify_status(user_id, random_token)
-                
-                bot_username = client.username or (await client.get_me()).username
-                verification_url = f"https://t.me/{bot_username}?start=verify_{random_token}"
-                shortened_url = await get_shortlink(verification_url)
-                
-                # 'Buy Premium' e direct deep-link dewa holo jate 100% kaj kore
-                verify_buttons = [
-                    [InlineKeyboardButton("🔓 Verify Token (Click Here)", url=shortened_url)],
-                    [InlineKeyboardButton("Tutorial (How To Verify)", url=VERIFY_TUTORIAL)],
-                    [InlineKeyboardButton("⭐ Buy Premium (No Ads)", url=f"https://t.me/{bot_username}?start=premium")]
-                ]
-                await message.reply_text(
-                    f"<b>⚠️ Access Denied! Verification Required.</b>\n\n"
-                    f"You must complete token verification to download this file.\n\n"
-                    f"Click on <b>'Verify Token'</b> below to get access (Valid for <b>{verify_expire_time}</b>) "
-                    f"or tap <b>Buy Premium</b> to skip all ads forever!",
-                    reply_markup=InlineKeyboardMarkup(verify_buttons),
-                    parse_mode=ParseMode.HTML,
-                    protect_content=True
-                )
-                return
+        # 2. Check Premium & 24H 1 Daily Free File Logic
+        is_prem = await is_premium_user(user_id) or (user_id in ADMINS)
+        has_free_quota = False
+        
+        if not is_prem:
+            remaining_free = await get_free_usage_status(user_id)
+            if remaining_free > 0:
+                has_free_quota = True
+                await use_free_quota(user_id)
+
+        # Jodi premium na thake ebong free quota sesh hoye thake, tokhon shortlink verify chaibe
+        if not is_prem and not has_free_quota:
+            if IS_VERIFY and (SHORTLINK_URL and SHORTLINK_API):
+                if not await is_user_verified(user_id):
+                    chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+                    random_token = ''.join(random.choices(chars, k=10))
+                    await update_verify_status(user_id, random_token)
+                    
+                    bot_username = client.username or (await client.get_me()).username
+                    verification_url = f"https://t.me/{bot_username}?start=verify_{random_token}"
+                    shortened_url = await get_shortlink(verification_url)
+                    
+                    verify_buttons = [
+                        [InlineKeyboardButton("🔓 Verify Token (Click Here)", url=shortened_url)],
+                        [InlineKeyboardButton("Tutorial (How To Verify)", url=VERIFY_TUTORIAL)],
+                        [InlineKeyboardButton("⭐ Buy Premium (No Ads)", url=f"https://t.me/{bot_username}?start=premium")]
+                    ]
+                    await message.reply_text(
+                        f"<b>⚠️ Access Denied! Verification Required.</b>\n\n"
+                        f"Your daily free link quota is finished. You must complete token verification to download this file.\n\n"
+                        f"Click on <b>'Verify Token'</b> below to get access (Valid for <b>{verify_expire_time}</b>) "
+                        f"or tap <b>Buy Premium</b> to skip all ads forever!",
+                        reply_markup=InlineKeyboardMarkup(verify_buttons),
+                        parse_mode=ParseMode.HTML,
+                        protect_content=True
+                    )
+                    return
 
         # 3. Normal File Retrieval
         decoded_string = await decode(base64_string)
@@ -295,7 +349,6 @@ async def premium_menu_callback(client: Client, query: CallbackQuery):
         [InlineKeyboardButton("🔒 Close", callback_data="close_message")]
     ]
     
-    # Message-er niche fresh dialog hishebe send kora
     await client.send_message(
         chat_id=user_id,
         text=text,
@@ -304,25 +357,28 @@ async def premium_menu_callback(client: Client, query: CallbackQuery):
     )
 
 
-# 3. Help Menu Button
+# 3. Help Menu Callback (Screenshot 1 Format)
 @Bot.on_callback_query(filters.regex('^open_help_menu$'))
 async def help_callback(client: Client, query: CallbackQuery):
     await query.answer()
-    help_text = """○ <b>OWNER :</b> Admin
+    user_first = query.from_user.first_name or "User"
+    help_caption = f"""⁉️ <b>HELLO {user_first} ~</b>
 
-📝 <b>Basic Users Commands:</b>
+╭ <b>I AM A PRIVATE FILE SHARING BOT, MEANT TO PROVIDE FILES AND NECESSARY STUFF THROUGH SPECIAL LINK FOR SPECIFIC CHANNELS.</b> ❞
 
-• /start - Start the bot
-• /help - Open help menu
-• /myplan - Check premium status
+╭ <b>IN ORDER TO GET THE FILES YOU HAVE TO JOIN THE ALL MENTIONED CHANNEL THAT I PROVIDE YOU TO JOIN. YOU CAN NOT ACCESS OR GET THE FILES UNLESS YOU JOINED ALL CHANNELS.</b> ❞
 
-💡 <b>Tip:</b> Use /myplan to see your subscription details!
+╭ <b>SO JOIN MENTIONED CHANNELS TO GET FILES OR INITIATE MESSAGES...</b> ❞
 
-╭ <b>File Access:</b> ❞
-• Click on any file link to access shared content.
-• Premium users get unlimited access!!"""
+╭ <b>/help - OPEN THIS HELP MESSAGE !</b> ❞
+
+◇ <b>STILL HAVE DOUBTS, CONTACT BELOW PERSONS/GROUP AS PER YOUR NEED !</b>"""
 
     buttons = [
+        [
+            InlineKeyboardButton("🤖 OWNER", url=f"tg://openmessage?user_id={OWNER_ID}"),
+            InlineKeyboardButton("🥰 DEVELOPER", url="https://t.me/JishuDeveloper")
+        ],
         [
             InlineKeyboardButton("⬅️ BACK", callback_data="back_to_start_home"),
             InlineKeyboardButton("CLOSE ❌", callback_data="close_message")
@@ -332,25 +388,18 @@ async def help_callback(client: Client, query: CallbackQuery):
     try:
         if query.message.photo:
             await query.message.edit_caption(
-                caption=help_text,
+                caption=help_caption,
                 reply_markup=InlineKeyboardMarkup(buttons),
                 parse_mode=ParseMode.HTML
             )
         else:
             await query.message.edit_text(
-                text=help_text,
+                text=help_caption,
                 reply_markup=InlineKeyboardMarkup(buttons),
                 parse_mode=ParseMode.HTML
             )
     except MessageNotModified:
         pass
-    except Exception:
-        await client.send_message(
-            chat_id=query.from_user.id,
-            text=help_text,
-            reply_markup=InlineKeyboardMarkup(buttons),
-            parse_mode=ParseMode.HTML
-        )
 
 
 # 4. Back to Start Home
