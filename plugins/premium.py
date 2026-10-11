@@ -37,19 +37,6 @@ def get_plans_buttons():
     return InlineKeyboardMarkup(buttons)
 
 
-async def safe_edit(message: Message, text: str, markup: InlineKeyboardMarkup):
-    """Photo message hole edit_caption korbe, text message hole edit_text korbe"""
-    try:
-        if message.photo:
-            await message.edit_caption(caption=text, reply_markup=markup, parse_mode=ParseMode.HTML)
-        else:
-            await message.edit_text(text=text, reply_markup=markup, parse_mode=ParseMode.HTML)
-    except MessageNotModified:
-        pass
-    except Exception as e:
-        print(f"Error in safe_edit: {e}")
-
-
 # --- /myplan command ---
 @Bot.on_message(filters.command(['myplan']) & filters.private)
 async def myplan_cmd(client: Client, message: Message):
@@ -69,81 +56,55 @@ async def myplan_cmd(client: Client, message: Message):
         )
 
 
-# --- Start menu theke '⭐ PREMIUM' tap korle ba /plans dile ---
-@Bot.on_callback_query(filters.regex('^open_premium_menu$'))
+# --- /plans ba /buy command ---
 @Bot.on_message(filters.command(['plans', 'buy', 'premium']) & filters.private)
-async def premium_intro(client: Client, update):
-    is_callback = isinstance(update, CallbackQuery)
-    user = update.from_user
-    user_id = user.id
-    
+async def plans_cmd(client: Client, message: Message):
+    user_id = message.from_user.id
     if await is_premium_user(user_id):
         status = await get_premium_status(user_id)
-        text = f"<b>✅ You are already a Premium Member!</b>\n\n⏳ Validity: <b>{status}</b>"
-        if is_callback:
-            await update.answer(text, show_alert=True)
-        else:
-            await update.reply_text(text, parse_mode=ParseMode.HTML)
+        await message.reply_text(f"<b>✅ You are already Premium!</b>\n\nValidity: <b>{status}</b>", parse_mode=ParseMode.HTML)
         return
 
-    text = f"""👋 <b>Hello {user.first_name}</b>
-
-🎖 <b>Want Premium?</b>
-
-› Choose a method below:
-
-╭ <b>💳 Pay with UPI (Instant activation)</b> ❞"""
-
+    text = f"""👋 <b>Hello {message.from_user.first_name}</b>\n\n🎖 <b>Want Premium?</b>\n\n› Choose a method below:\n\n╭ <b>💳 Pay with UPI (Instant activation)</b> ❞"""
     buttons = [
         [InlineKeyboardButton("💳 Pay with UPI", callback_data="view_upi_plans")],
         [InlineKeyboardButton("🔒 Close", callback_data="close_message")]
     ]
-    markup = InlineKeyboardMarkup(buttons)
-
-    if is_callback:
-        await update.answer()
-        # Photo start message theke ashle natun message pathano shobcheye safe
-        try:
-            await update.message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
-        except Exception:
-            await client.send_message(chat_id=user_id, text=text, reply_markup=markup, parse_mode=ParseMode.HTML)
-    else:
-        await update.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
-
-
-@Bot.on_callback_query(filters.regex('^back_to_premium_home$'))
-async def back_to_premium_home_cb(client: Client, query: CallbackQuery):
-    await query.answer()
-    text = f"""👋 <b>Hello {query.from_user.first_name}</b>
-
-🎖 <b>Want Premium?</b>
-
-› Choose a method below:
-
-╭ <b>💳 Pay with UPI (Instant activation)</b> ❞"""
-
-    buttons = [
-        [InlineKeyboardButton("💳 Pay with UPI", callback_data="view_upi_plans")],
-        [InlineKeyboardButton("🔒 Close", callback_data="close_message")]
-    ]
-    markup = InlineKeyboardMarkup(buttons)
-
-    # Cancel kore back ashle jodi photo message hoy tobe delete kore fresh message pathabe
-    if query.message.photo:
-        try:
-            await query.message.delete()
-        except Exception:
-            pass
-        await client.send_message(chat_id=query.from_user.id, text=text, reply_markup=markup, parse_mode=ParseMode.HTML)
-    else:
-        await safe_edit(query.message, text, markup)
+    await message.reply_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
 
 
 # --- '💳 Pay with UPI' tap korle plans list show kora ---
 @Bot.on_callback_query(filters.regex('^view_upi_plans$'))
 async def view_plans_cb(client: Client, query: CallbackQuery):
     await query.answer()
-    await safe_edit(query.message, PREMIUM_PLANS_TEXT, get_plans_buttons())
+    try:
+        await query.message.edit_text(
+            PREMIUM_PLANS_TEXT,
+            reply_markup=get_plans_buttons(),
+            parse_mode=ParseMode.HTML
+        )
+    except Exception:
+        await client.send_message(
+            chat_id=query.from_user.id,
+            text=PREMIUM_PLANS_TEXT,
+            reply_markup=get_plans_buttons(),
+            parse_mode=ParseMode.HTML
+        )
+
+
+@Bot.on_callback_query(filters.regex('^back_to_premium_home$'))
+async def back_to_premium_home_cb(client: Client, query: CallbackQuery):
+    await query.answer()
+    text = f"""👋 <b>Hello {query.from_user.first_name}</b>\n\n🎖 <b>Want Premium?</b>\n\n› Choose a method below:\n\n╭ <b>💳 Pay with UPI (Instant activation)</b> ❞"""
+    buttons = [
+        [InlineKeyboardButton("💳 Pay with UPI", callback_data="view_upi_plans")],
+        [InlineKeyboardButton("🔒 Close", callback_data="close_message")]
+    ]
+    try:
+        await query.message.delete()
+    except Exception:
+        pass
+    await client.send_message(chat_id=query.from_user.id, text=text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
 
 
 # --- Plan Select Korle QR Code + UTR Details ---
@@ -297,7 +258,7 @@ async def reject_cb(client: Client, query: CallbackQuery):
         print(f"Error messaging user: {e}")
 
 
-# --- Manual Admin Commands to Directly Add/Remove Premium ---
+# --- Manual Admin Commands ---
 @Bot.on_message(filters.command('add_premium') & filters.private & filters.user(ADMINS))
 async def manual_add_premium(client: Client, message: Message):
     if len(message.command) < 3:
