@@ -2,6 +2,7 @@ import time
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from pyrogram.errors import MessageNotModified
 from bot import Bot
 from config import ADMINS, UPI_ID, UPI_QR_URL, PREMIUM_PLANS_TEXT
 from database.database import is_premium_user, add_premium, remove_premium, get_premium_status
@@ -36,6 +37,19 @@ def get_plans_buttons():
     return InlineKeyboardMarkup(buttons)
 
 
+async def safe_edit(message: Message, text: str, markup: InlineKeyboardMarkup):
+    """Photo message hole edit_caption korbe, normal message hole edit_text korbe"""
+    try:
+        if message.photo:
+            await message.edit_caption(caption=text, reply_markup=markup, parse_mode=ParseMode.HTML)
+        else:
+            await message.edit_text(text=text, reply_markup=markup, parse_mode=ParseMode.HTML)
+    except MessageNotModified:
+        pass
+    except Exception as e:
+        print(f"Error in safe_edit: {e}")
+
+
 # --- /myplan command ---
 @Bot.on_message(filters.command(['myplan']) & filters.private)
 async def myplan_cmd(client: Client, message: Message):
@@ -60,7 +74,8 @@ async def myplan_cmd(client: Client, message: Message):
 @Bot.on_message(filters.command(['plans', 'buy', 'premium']) & filters.private)
 async def premium_intro(client: Client, update):
     is_callback = isinstance(update, CallbackQuery)
-    user_id = update.from_user.id
+    user = update.from_user
+    user_id = user.id
     
     if await is_premium_user(user_id):
         status = await get_premium_status(user_id)
@@ -71,7 +86,7 @@ async def premium_intro(client: Client, update):
             await update.reply_text(text, parse_mode=ParseMode.HTML)
         return
 
-    text = f"""👋 <b>Hello {update.from_user.first_name}</b>
+    text = f"""👋 <b>Hello {user.first_name}</b>
 
 🎖 <b>Want Premium?</b>
 
@@ -87,7 +102,7 @@ async def premium_intro(client: Client, update):
 
     if is_callback:
         await update.answer()
-        await update.message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+        await safe_edit(update.message, text, markup)
     else:
         await update.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
 
@@ -107,18 +122,14 @@ async def back_to_premium_home_cb(client: Client, query: CallbackQuery):
         [InlineKeyboardButton("💳 Pay with UPI", callback_data="view_upi_plans")],
         [InlineKeyboardButton("🔒 Close", callback_data="close_message")]
     ]
-    await query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
+    await safe_edit(query.message, text, InlineKeyboardMarkup(buttons))
 
 
 # --- '💳 Pay with UPI' tap korle plans list show kora ---
 @Bot.on_callback_query(filters.regex('^view_upi_plans$'))
 async def view_plans_cb(client: Client, query: CallbackQuery):
     await query.answer()
-    await query.message.edit_text(
-        PREMIUM_PLANS_TEXT,
-        reply_markup=get_plans_buttons(),
-        parse_mode=ParseMode.HTML
-    )
+    await safe_edit(query.message, PREMIUM_PLANS_TEXT, get_plans_buttons())
 
 
 # --- Plan Select Korle QR Code + UTR Details ---
@@ -149,20 +160,25 @@ After payment, send your <b>12-digit UTR number</b> here!"""
         [InlineKeyboardButton("❌ CANCEL", callback_data="back_to_premium_home")]
     ]
 
+    try:
+        await query.message.delete()
+    except Exception:
+        pass
+
     if UPI_QR_URL and UPI_QR_URL.startswith("http"):
         try:
-            await query.message.reply_photo(
+            await client.send_photo(
+                chat_id=user_id,
                 photo=UPI_QR_URL,
                 caption=caption,
                 reply_markup=InlineKeyboardMarkup(buttons),
                 parse_mode=ParseMode.HTML
             )
-            await query.message.delete()
             return
         except Exception as e:
             print(f"QR photo error: {e}")
 
-    await query.message.edit_text(caption, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
+    await client.send_message(chat_id=user_id, text=caption, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
 
 
 # --- UTR input dhora (Auto Alert to Admin) ---
@@ -268,7 +284,6 @@ async def reject_cb(client: Client, query: CallbackQuery):
 
 
 # --- Manual Admin Commands to Directly Add/Remove Premium ---
-
 @Bot.on_message(filters.command('add_premium') & filters.private & filters.user(ADMINS))
 async def manual_add_premium(client: Client, message: Message):
     if len(message.command) < 3:
