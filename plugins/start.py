@@ -1,5 +1,5 @@
 import os, asyncio, humanize, random
-from pyrogram import Client, filters, __version__
+from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pyrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated, MessageNotModified
@@ -20,23 +20,27 @@ file_auto_delete = humanize.naturaldelta(FILE_AUTO_DELETE)
 verify_expire_time = humanize.naturaldelta(VERIFY_EXPIRE)
 
 
-def get_start_buttons(client: Client, deep_link: str = ""):
+async def get_start_buttons(client: Client, deep_link: str = ""):
     buttons = []
-    bot_username = client.username or "Bot"
+    bot_username = client.username or (await client.get_me()).username
     
-    # 1. Force Sub Channel join buttons
+    # 1. Force Sub Channel-er Real Invite Link Fetch Kora
     for idx, channel_id in enumerate(FORCE_SUB_CHANNELS, start=1):
         try:
+            chat = await client.get_chat(channel_id)
+            invite_link = chat.invite_link or await client.export_chat_invite_link(channel_id)
+            buttons.append([InlineKeyboardButton(text=f"👉 Join Channel {idx} 👈", url=invite_link)])
+        except Exception as e:
+            print(f"Force Sub Link Error for {channel_id}: {e}")
+            # Fallback
             buttons.append([InlineKeyboardButton(text=f"👉 Join Channel {idx} 👈", url=f"https://t.me/{bot_username}")])
-        except Exception:
-            pass
 
-    # 2. File link thakle Try Again button
+    # 2. Deep link thakle Try Again
     if deep_link:
         try_again_url = f"https://t.me/{bot_username}?start={deep_link}"
         buttons.append([InlineKeyboardButton(text="🔄 Try Again", url=try_again_url)])
 
-    # 3. Premium, Admin, Help Menu & Close buttons
+    # 3. Screenshot onujayi Menu Buttons
     buttons.append([
         InlineKeyboardButton("⭐ PREMIUM", callback_data="open_premium_menu"),
         InlineKeyboardButton("👨‍💼 ADMIN", url=f"tg://openmessage?user_id={OWNER_ID}")
@@ -60,7 +64,7 @@ Welcome to @{bot_username}
 
 I can store private files in Specified Channel and other users can access it from special link."""
 
-    markup = get_start_buttons(client, deep_link)
+    markup = await get_start_buttons(client, deep_link)
     raw_url = random.choice(START_PICS) if START_PICS else None
     
     if raw_url:
@@ -74,7 +78,7 @@ I can store private files in Specified Channel and other users can access it fro
                 )
                 return
             except Exception as e:
-                print(f"Direct photo send failed, trying buffer fallback: {e}")
+                print(f"Photo send error: {e}")
 
         photo_buffer = await get_random_pic_data(raw_url)
         if photo_buffer:
@@ -87,7 +91,7 @@ I can store private files in Specified Channel and other users can access it fro
                 )
                 return
             except Exception as e:
-                print(f"Buffer photo send failed: {e}")
+                print(f"Buffer photo error: {e}")
 
     await message.reply_text(
         text=caption_text,
@@ -97,7 +101,7 @@ I can store private files in Specified Channel and other users can access it fro
     )
 
 
-# --- JARA SUBSCRIBED NAY TADER JONNO HANDLER ---
+# --- JARA JOIN KORENI TADER JONNO ---
 @Bot.on_message(filters.command('start') & filters.private & ~subscribed)
 async def not_joined(client: Client, message: Message):
     text = message.text
@@ -110,7 +114,7 @@ async def not_joined(client: Client, message: Message):
     await send_styled_start(client, message, deep_link=deep_link)
 
 
-# --- JARA SUBSCRIBED TADER JONNO MAIN START HANDLER ---
+# --- MAIN START HANDLER ---
 @Bot.on_message(filters.command('start') & filters.private & subscribed)
 async def start_command(client: Client, message: Message):
     user_id = message.from_user.id
@@ -127,7 +131,7 @@ async def start_command(client: Client, message: Message):
         except Exception:
             return
 
-        # 1. Token Verification Return Process
+        # 1. Token Verification Return
         if base64_string.startswith("verify_"):
             token = base64_string.split("verify_", 1)[1]
             saved_token = await get_verify_token(user_id)
@@ -142,9 +146,9 @@ async def start_command(client: Client, message: Message):
                 await message.reply_text("<b>❌ Invalid or Expired Token!</b>\n\nPlease try generating a new token.", parse_mode=ParseMode.HTML)
             return
 
-        # 2. Check Premium & Verification for File Access
+        # 2. Premium Bypass & Token Verification Check
         if await is_premium_user(user_id) or (user_id in ADMINS):
-            pass  # Premium users bypass shortlink
+            pass  # Direct file access
         elif IS_VERIFY and (SHORTLINK_URL and SHORTLINK_API):
             if not await is_user_verified(user_id):
                 chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -249,21 +253,21 @@ async def start_command(client: Client, message: Message):
         asyncio.create_task(delete_files(madflix_msgs, client, k))
         return
 
-    # Normal /start command
+    # Normal /start
     await send_styled_start(client, message, deep_link="")
 
 
-# --- Close Button Callback (Fixed: instant query.answer) ---
+# --- Close Button Callback ---
 @Bot.on_callback_query(filters.regex('^close_message$'))
 async def close_callback(client: Client, query: CallbackQuery):
     await query.answer()
     try:
         await query.message.delete()
-    except Exception as e:
-        print(f"Error closing: {e}")
+    except Exception:
+        pass
 
 
-# --- Help Menu Callback (Fixed: safe caption/text handler) ---
+# --- Help Menu Callback ---
 @Bot.on_callback_query(filters.regex('^open_help_menu$'))
 async def help_callback(client: Client, query: CallbackQuery):
     await query.answer()
@@ -304,7 +308,7 @@ async def help_callback(client: Client, query: CallbackQuery):
     except MessageNotModified:
         pass
     except Exception as e:
-        print(f"Help menu edit error: {e}")
+        print(f"Help menu error: {e}")
 
 
 @Bot.on_callback_query(filters.regex('^back_to_start_home$'))
@@ -314,7 +318,7 @@ async def back_to_start_callback(client: Client, query: CallbackQuery):
     caption_text = f"""Hello {user_name}
 
 I can store private files in Specified Channel and other users can access it from special link."""
-    markup = get_start_buttons(client)
+    markup = await get_start_buttons(client)
 
     try:
         if query.message.photo:
@@ -394,5 +398,5 @@ async def delete_files(messages, client, k):
         try:
             await client.delete_messages(chat_id=msg.chat.id, message_ids=[msg.id])
         except Exception as e:
-            print(f"The attempt to delete the media {msg.id} was unsuccessful: {e}")
+            print(f"Delete media error {msg.id}: {e}")
     await k.edit_text("Your Video / File Is Successfully Deleted ✅")
