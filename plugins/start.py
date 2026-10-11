@@ -9,7 +9,7 @@ from config import (
     PROTECT_CONTENT, FILE_AUTO_DELETE, IS_VERIFY, SHORTLINK_URL, SHORTLINK_API, VERIFY_TUTORIAL,
     VERIFY_EXPIRE, FORCE_SUB_CHANNELS, START_PICS
 )
-from helper_func import subscribed, encode, decode, get_messages, get_shortlink, get_random_pic_data
+from helper_func import subscribed, is_subscribed, encode, decode, get_messages, get_shortlink, get_random_pic_data
 from database.database import (
     add_user, del_user, full_userbase, present_user, 
     is_user_verified, update_verify_status, get_verify_token, set_verified
@@ -31,7 +31,7 @@ async def send_styled_start(client: Client, message: Message):
         except Exception as e:
             print(f"Error getting invite link for channel {channel_id}: {e}")
 
-    # 2. Interactive Verify / Status Check Button
+    # 2. Interactive Verify Button (Callback)
     buttons.append([InlineKeyboardButton(text='🔄 Try Again / Verify', callback_data='check_verification')])
 
     # 3. Custom text message (English)
@@ -223,40 +223,47 @@ async def not_joined(client: Client, message: Message):
 @Bot.on_callback_query(filters.regex('^check_verification$'))
 async def check_verification_callback(client: Client, query: CallbackQuery):
     user_id = query.from_user.id
-    
-    # 1. Check if user is subscribed to all channels
-    from helper_func import is_subscribed
-    is_sub = await is_subscribed(None, client, query)
-    if not is_sub:
-        await query.answer("❌ You haven't joined all required channels yet! Please join and try again.", show_alert=True)
-        return
 
-    # 2. Check Verification Status
-    if IS_VERIFY and (user_id not in ADMINS) and (SHORTLINK_URL and SHORTLINK_API):
-        if await is_user_verified(user_id):
-            await query.answer(f"✅ You are already verified! Enjoy unlimited access for {verify_expire_time}.", show_alert=True)
+    try:
+        # 1. Prothome Force-sub check kora
+        sub_status = await is_subscribed(None, client, query)
+        if not sub_status:
+            await query.answer("❌ You haven't joined all required channels yet! Please join and tap again.", show_alert=True)
+            return
+
+        # 2. Token verification status check kora
+        if IS_VERIFY and (user_id not in ADMINS) and (SHORTLINK_URL and SHORTLINK_API):
+            if await is_user_verified(user_id):
+                await query.answer(f"✅ You are already verified! Enjoy unlimited access for {verify_expire_time}.", show_alert=True)
+                return
+            else:
+                # Immediate acknowledgment jate button freeze na hoy
+                await query.answer("🔄 Generating verification link...", show_alert=False)
+                
+                chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+                random_token = ''.join(random.choices(chars, k=10))
+                await update_verify_status(user_id, random_token)
+                
+                verification_url = f"https://t.me/{client.username}?start=verify_{random_token}"
+                shortened_url = await get_shortlink(verification_url)
+                
+                verify_buttons = [
+                    [InlineKeyboardButton("🔓 Verify Token (Click Here)", url=shortened_url)],
+                    [InlineKeyboardButton("Tutorial (How To Verify)", url=VERIFY_TUTORIAL)]
+                ]
+                await query.message.reply_text(
+                    f"<b>⚠️ Access Denied! Verification Required.</b>\n\n"
+                    f"You must complete token verification to use this bot.\n"
+                    f"Click on <b>'Verify Token'</b> below to get access (Valid for <b>{verify_expire_time}</b>).",
+                    reply_markup=InlineKeyboardMarkup(verify_buttons),
+                    protect_content=True
+                )
+                return
         else:
-            await query.answer("Generating verification link...", show_alert=False)
-            chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-            random_token = ''.join(random.choices(chars, k=10))
-            await update_verify_status(user_id, random_token)
-            
-            verification_url = f"https://t.me/{client.username}?start=verify_{random_token}"
-            shortened_url = await get_shortlink(verification_url)
-            
-            verify_buttons = [
-                [InlineKeyboardButton("🔓 Verify Token (Click Here)", url=shortened_url)],
-                [InlineKeyboardButton("Tutorial (How To Verify)", url=VERIFY_TUTORIAL)]
-            ]
-            await query.message.reply_text(
-                f"<b>⚠️ Access Denied! Verification Required.</b>\n\n"
-                f"You must verify your token to use this bot.\n"
-                f"Click on <b>'Verify Token'</b> below to get access (Valid for <b>{verify_expire_time}</b>).",
-                reply_markup=InlineKeyboardMarkup(verify_buttons),
-                protect_content=True
-            )
-    else:
-        await query.answer("✅ All set! You have full access.", show_alert=True)
+            await query.answer("✅ All channels verified! You have full access.", show_alert=True)
+    except Exception as e:
+        print(f"Error in check_verification callback: {e}")
+        await query.answer("Something went wrong! Please try again.", show_alert=True)
 
 
 @Bot.on_message(filters.command('users') & filters.private & filters.user(ADMINS))
