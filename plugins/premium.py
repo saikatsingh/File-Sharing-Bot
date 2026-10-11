@@ -1,11 +1,14 @@
-import time
+import time, random
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pyrogram.errors import MessageNotModified
 from bot import Bot
-from config import ADMINS, UPI_ID, UPI_QR_URL, PREMIUM_PLANS_TEXT
-from database.database import is_premium_user, add_premium, remove_premium, get_premium_status
+from config import ADMINS, UPI_ID, UPI_QR_URL, PREMIUM_PLANS_TEXT, START_PICS, VERIFY_TUTORIAL
+from database.database import (
+    is_premium_user, add_premium, remove_premium, get_premium_status,
+    get_free_usage_status
+)
 
 AWAITING_UTR = {}
 
@@ -37,23 +40,54 @@ def get_plans_buttons():
     return InlineKeyboardMarkup(buttons)
 
 
-# --- /myplan command ---
+# --- /myplan command (Screenshot 2 Template Format) ---
 @Bot.on_message(filters.command(['myplan']) & filters.private)
 async def myplan_cmd(client: Client, message: Message):
-    user_id = message.from_user.id
-    if await is_premium_user(user_id):
-        status = await get_premium_status(user_id)
-        await message.reply_text(
-            f"<b>👑 Premium Status: Active</b>\n\n"
-            f"⏳ <b>Remaining Validity:</b> <code>{status}</code>\n"
-            f"⚡ Direct instant downloads enabled without ads!",
-            parse_mode=ParseMode.HTML
-        )
+    user = message.from_user
+    user_id = user.id
+
+    name = f"{user.first_name} {user.last_name or ''}".strip()
+    username = f"@{user.username}" if user.username else "No Username"
+
+    is_prem = await is_premium_user(user_id)
+    if is_prem:
+        validity = await get_premium_status(user_id)
+        status_text = f"ACTIVE ({validity})"
+        remaining_free_text = "UNLIMITED"
     else:
-        await message.reply_text(
-            "<b>❌ You are currently on Free Plan.</b>\n\nUse /plans to upgrade to Premium!",
-            parse_mode=ParseMode.HTML
-        )
+        status_text = "❌ NOT ACTIVE"
+        remaining_count = await get_free_usage_status(user_id)
+        remaining_free_text = f"1/1 (REMAINING: {remaining_count})"
+
+    plan_caption = f"""╭───────[ <b>PROFILE</b> ]───────╮
+ 
+• <b>NAME :</b> {name}
+• <b>USERNAME :</b> {username}
+• <b>USER ID :</b> <code>{user_id}</code>
+• <b>PREMIUM STATUS :</b> {status_text}
+──────────────────────
+• <b>FREE USAGE :</b> {remaining_free_text}"""
+
+    buttons = [
+        [InlineKeyboardButton("• BUY PREMIUM •", callback_data="view_upi_plans")],
+        [InlineKeyboardButton("• TUTORIAL TO BUY •", url=VERIFY_TUTORIAL)]
+    ]
+    markup = InlineKeyboardMarkup(buttons)
+
+    raw_url = random.choice(START_PICS) if START_PICS else None
+    if raw_url and raw_url.startswith("http"):
+        try:
+            await message.reply_photo(
+                photo=raw_url,
+                caption=plan_caption,
+                reply_markup=markup,
+                parse_mode=ParseMode.HTML
+            )
+            return
+        except Exception:
+            pass
+
+    await message.reply_text(plan_caption, reply_markup=markup, parse_mode=ParseMode.HTML)
 
 
 # --- /plans ba /buy command ---
@@ -150,14 +184,14 @@ After payment, send your <b>12-digit UTR number</b> here!"""
                 parse_mode=ParseMode.HTML
             )
             return
-        except Exception as e:
-            print(f"QR photo error: {e}")
+        except Exception:
+            pass
 
     await client.send_message(chat_id=user_id, text=caption, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
 
 
-# --- UTR input dhora (Auto Alert to Admin) ---
-@Bot.on_message(filters.private & filters.text & ~filters.command(['start', 'plans', 'buy', 'premium', 'myplan', 'broadcast', 'users', 'add_premium', 'remove_premium']))
+# --- UTR input listener (Auto Alert to Admin) ---
+@Bot.on_message(filters.private & filters.text & ~filters.command(['start', 'help', 'myplan', 'plans', 'buy', 'premium', 'broadcast', 'users', 'batch', 'genlink', 'stats', 'add_premium', 'remove_premium']))
 async def utr_listener(client: Client, message: Message):
     user_id = message.from_user.id
     if user_id not in AWAITING_UTR:
@@ -202,8 +236,8 @@ async def utr_listener(client: Client, message: Message):
                 reply_markup=InlineKeyboardMarkup(admin_buttons),
                 parse_mode=ParseMode.HTML
             )
-        except Exception as e:
-            print(f"Error alerting admin {admin_id}: {e}")
+        except Exception:
+            pass
 
 
 # --- 1-Click Auto Approval Callback ---
@@ -230,8 +264,8 @@ async def approve_cb(client: Client, query: CallbackQuery):
             text=f"<b>🎉 Payment Approved!</b>\n\nYour <b>{plan_name}</b> premium subscription is now active! Enjoy unlimited downloads without any ads.",
             parse_mode=ParseMode.HTML
         )
-    except Exception as e:
-        print(f"Error messaging user: {e}")
+    except Exception:
+        pass
 
 
 # --- 1-Click Auto Reject Callback ---
@@ -254,8 +288,8 @@ async def reject_cb(client: Client, query: CallbackQuery):
             text=f"<b>❌ Verification Failed!</b>\n\nYour UTR <code>{utr_text}</code> was rejected by Admin. Please check your payment and retry.",
             parse_mode=ParseMode.HTML
         )
-    except Exception as e:
-        print(f"Error messaging user: {e}")
+    except Exception:
+        pass
 
 
 # --- Manual Admin Commands ---
@@ -293,8 +327,8 @@ async def manual_add_premium(client: Client, message: Message):
                  f"Enjoy unlimited direct file downloads without any link bypass or ads.",
             parse_mode=ParseMode.HTML
         )
-    except Exception as e:
-        print(f"Could not notify user {target_id}: {e}")
+    except Exception:
+        pass
 
 
 @Bot.on_message(filters.command('remove_premium') & filters.private & filters.user(ADMINS))
@@ -325,5 +359,5 @@ async def manual_remove_premium(client: Client, message: Message):
             text="<b>⚠️ Your Premium access has been removed or revoked by Admin.</b>",
             parse_mode=ParseMode.HTML
         )
-    except Exception as e:
-        print(f"Could not notify user {target_id}: {e}")
+    except Exception:
+        pass
