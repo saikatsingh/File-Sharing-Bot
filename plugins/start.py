@@ -7,7 +7,7 @@ from bot import Bot
 from config import (
     ADMINS, FORCE_MSG, START_MSG, CUSTOM_CAPTION, DISABLE_CHANNEL_BUTTON, 
     PROTECT_CONTENT, FILE_AUTO_DELETE, IS_VERIFY, SHORTLINK_URL, SHORTLINK_API, VERIFY_TUTORIAL,
-    FORCE_SUB_CHANNELS, START_PICS
+    VERIFY_EXPIRE, FORCE_SUB_CHANNELS, START_PICS
 )
 from helper_func import subscribed, encode, decode, get_messages, get_shortlink, get_random_pic_data
 from database.database import (
@@ -15,9 +15,8 @@ from database.database import (
     is_user_verified, update_verify_status, get_verify_token, set_verified
 )
 
-madflixofficials = FILE_AUTO_DELETE
-jishudeveloper = madflixofficials
-file_auto_delete = humanize.naturaldelta(jishudeveloper)
+file_auto_delete = humanize.naturaldelta(FILE_AUTO_DELETE)
+verify_expire_time = humanize.naturaldelta(VERIFY_EXPIRE)
 
 
 async def send_styled_start(client: Client, message: Message):
@@ -32,25 +31,22 @@ async def send_styled_start(client: Client, message: Message):
         except Exception as e:
             print(f"Error getting invite link for channel {channel_id}: {e}")
 
-    # 2. Try Again / Verify Button
-    bot_username = client.username or (await client.get_me()).username
-    deep_link = message.command[1] if (message.command and len(message.command) > 1) else ""
-    verify_url = f"https://t.me/{bot_username}?start={deep_link}" if deep_link else f"https://t.me/{bot_username}?start"
-    
-    buttons.append([InlineKeyboardButton(text='🔄 Try Again / Verify', url=verify_url)])
+    # 2. Interactive Verify / Status Check Button
+    buttons.append([InlineKeyboardButton(text='🔄 Try Again / Verify', callback_data='check_verification')])
 
-    # 3. Custom text message
+    # 3. Custom text message (English)
     user_name = message.from_user.first_name if message.from_user else "User"
+    bot_username = client.username or (await client.get_me()).username
+
     caption_text = f"""Hey {user_name}
 Welcome to @{bot_username}
 
 🥵🥵Join Below Channels And Tap Verify To Continue 🍑🍑"""
 
-    # 4. Direct URL ba Buffer Image Send Kora
+    # 4. Direct URL or Memory Buffer Image
     raw_url = random.choice(START_PICS) if START_PICS else None
     
     if raw_url:
-        # A. Shasorir direct image URL hole Telegram instantly link theke load korbe
         if raw_url.startswith("http") and (raw_url.endswith(".jpg") or raw_url.endswith(".png") or "graph.org" in raw_url or "telegra.ph" in raw_url):
             try:
                 await message.reply_photo(
@@ -63,7 +59,6 @@ Welcome to @{bot_username}
             except Exception as e:
                 print(f"Direct photo send failed, trying buffer fallback: {e}")
 
-        # B. Fallback: API ba buffer download stream
         photo_buffer = await get_random_pic_data(raw_url)
         if photo_buffer:
             try:
@@ -77,7 +72,6 @@ Welcome to @{bot_username}
             except Exception as e:
                 print(f"Buffer photo send failed: {e}")
 
-    # C. Kono karone fail hole plain text
     await message.reply_text(
         text=caption_text,
         reply_markup=InlineKeyboardMarkup(buttons),
@@ -102,21 +96,21 @@ async def start_command(client: Client, message: Message):
         except:
             return
 
-        # 1. Token Verification Process
+        # --- 1. Token Verification Process ---
         if base64_string.startswith("verify_"):
             token = base64_string.split("verify_", 1)[1]
             saved_token = await get_verify_token(user_id)
             if saved_token and saved_token == token:
                 await set_verified(user_id)
                 await message.reply_text(
-                    "<b>✅ Token Successfully Verified!</b>\n\n"
-                    "Apnar verification safal hoyeche. Agami 24 ghantar jonno apni unrestricted access peyechen. Ekhon apnar file link-e click korun."
+                    f"<b>✅ Token Successfully Verified!</b>\n\n"
+                    f"You now have unrestricted access for the next <b>{verify_expire_time}</b>. You can now access your requested files."
                 )
             else:
-                await message.reply_text("<b>❌ Invalid or Expired Token!</b>\n\nOnugroho kore abar chesta korun.")
+                await message.reply_text("<b>❌ Invalid or Expired Token!</b>\n\nPlease try generating a new token.")
             return
 
-        # 2. Check Verification for File Access
+        # --- 2. Check Verification for File Access ---
         if IS_VERIFY and (user_id not in ADMINS) and (SHORTLINK_URL and SHORTLINK_API):
             if not await is_user_verified(user_id):
                 chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -131,15 +125,15 @@ async def start_command(client: Client, message: Message):
                     [InlineKeyboardButton("Tutorial (How To Verify)", url=VERIFY_TUTORIAL)]
                 ]
                 await message.reply_text(
-                    "<b>⚠️ Access Denied! Verification Required.</b>\n\n"
-                    "File-ti download korte hole apnake token verify korte hobe. "
-                    "Nicher <b>'Verify Token'</b> batone click kore link open korun ebong verify sesh korun (Eta 24 ghantar jonno active thakbe).",
+                    f"<b>⚠️ Access Denied! Verification Required.</b>\n\n"
+                    f"You must verify your token to download this file.\n"
+                    f"Click on <b>'Verify Token'</b> below to get access (Valid for <b>{verify_expire_time}</b>).",
                     reply_markup=InlineKeyboardMarkup(verify_buttons),
                     protect_content=True
                 )
                 return
 
-        # 3. File Retrieval
+        # --- 3. File Retrieval ---
         decoded_string = await decode(base64_string)
         argument = decoded_string.split("-")
         if len(argument) == 3:
@@ -223,6 +217,46 @@ async def start_command(client: Client, message: Message):
 @Bot.on_message(filters.command('start') & filters.private & ~subscribed)
 async def not_joined(client: Client, message: Message):
     await send_styled_start(client, message)
+
+
+# --- Callback Handler for 'Try Again / Verify' Button ---
+@Bot.on_callback_query(filters.regex('^check_verification$'))
+async def check_verification_callback(client: Client, query: CallbackQuery):
+    user_id = query.from_user.id
+    
+    # 1. Check if user is subscribed to all channels
+    from helper_func import is_subscribed
+    is_sub = await is_subscribed(None, client, query)
+    if not is_sub:
+        await query.answer("❌ You haven't joined all required channels yet! Please join and try again.", show_alert=True)
+        return
+
+    # 2. Check Verification Status
+    if IS_VERIFY and (user_id not in ADMINS) and (SHORTLINK_URL and SHORTLINK_API):
+        if await is_user_verified(user_id):
+            await query.answer(f"✅ You are already verified! Enjoy unlimited access for {verify_expire_time}.", show_alert=True)
+        else:
+            await query.answer("Generating verification link...", show_alert=False)
+            chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+            random_token = ''.join(random.choices(chars, k=10))
+            await update_verify_status(user_id, random_token)
+            
+            verification_url = f"https://t.me/{client.username}?start=verify_{random_token}"
+            shortened_url = await get_shortlink(verification_url)
+            
+            verify_buttons = [
+                [InlineKeyboardButton("🔓 Verify Token (Click Here)", url=shortened_url)],
+                [InlineKeyboardButton("Tutorial (How To Verify)", url=VERIFY_TUTORIAL)]
+            ]
+            await query.message.reply_text(
+                f"<b>⚠️ Access Denied! Verification Required.</b>\n\n"
+                f"You must verify your token to use this bot.\n"
+                f"Click on <b>'Verify Token'</b> below to get access (Valid for <b>{verify_expire_time}</b>).",
+                reply_markup=InlineKeyboardMarkup(verify_buttons),
+                protect_content=True
+            )
+    else:
+        await query.answer("✅ All set! You have full access.", show_alert=True)
 
 
 @Bot.on_message(filters.command('users') & filters.private & filters.user(ADMINS))
