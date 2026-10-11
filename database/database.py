@@ -40,7 +40,7 @@ async def is_user_verified(user_id: int) -> bool:
     is_verified = verify_status.get("is_verified", False)
     verified_time = verify_status.get("verified_time", 0)
     
-    # Check korbe time expire hoyeche kina (default 24 ghanta)
+    # Check korbe time expire hoyeche kina
     if is_verified and (time.time() - verified_time) < VERIFY_EXPIRE:
         return True
     return False
@@ -80,8 +80,78 @@ async def set_verified(user_id: int):
     )
 
 
-# Jishu Developer 
-# Don't Remove Credit 🥺
-# Telegram Channel @Madflix_Bots
-# Backup Channel @JishuBotz
-# Developer @JishuDeveloper
+# --- Premium Subscription Functions ---
+
+async def is_premium_user(user_id: int) -> bool:
+    user = user_data.find_one({'_id': user_id})
+    if not user:
+        return False
+
+    is_premium = user.get("is_premium", False)
+    if not is_premium:
+        return False
+
+    expire_time = user.get("premium_expire", 0)
+    # 0 hole Lifetime plan
+    if expire_time == 0:
+        return True
+
+    # Current epoch timestamp-er sathe check kora
+    if time.time() < expire_time:
+        return True
+    else:
+        # Time sesh hoye gele auto-downgrade
+        user_data.update_one(
+            {'_id': user_id},
+            {
+                '$set': {
+                    'is_premium': False,
+                    'premium_expire': 0
+                }
+            }
+        )
+        return False
+
+
+async def add_premium(user_id: int, days: int = 30):
+    if days == 0:
+        expire_time = 0  # 0 indicates Lifetime
+    else:
+        expire_time = time.time() + (days * 86400)
+
+    user_data.update_one(
+        {'_id': user_id},
+        {
+            '$set': {
+                'is_premium': True,
+                'premium_expire': expire_time
+            }
+        },
+        upsert=True
+    )
+
+
+async def remove_premium(user_id: int):
+    user_data.update_one(
+        {'_id': user_id},
+        {
+            '$set': {
+                'is_premium': False,
+                'premium_expire': 0
+            }
+        }
+    )
+
+
+async def get_premium_status(user_id: int):
+    user = user_data.find_one({'_id': user_id})
+    if not user or not user.get("is_premium", False):
+        return None
+    expire_time = user.get("premium_expire", 0)
+    if expire_time == 0:
+        return "Lifetime"
+    remaining_seconds = expire_time - time.time()
+    if remaining_seconds > 0:
+        remaining_days = round(remaining_seconds / 86400, 1)
+        return f"{remaining_days} Days"
+    return "Expired"
