@@ -34,10 +34,10 @@ START_PICS = os.environ.get(
 ).split()
 
 # --- Token Verification & Shortener Settings ---
-SHORTLINK_URL = os.environ.get("SHORTLINK_URL", "nowshort.com")
-SHORTLINK_API = os.environ.get("SHORTLINK_API", "78985d959bb9aac8ed8d2989973cbef110ed00c4")
+SHORTLINK_URL = os.environ.get("SHORTLINK_URL", "arolinks.com")
+SHORTLINK_API = os.environ.get("SHORTLINK_API", "a769587e8ee75b1cec273858ff616230b9b8d912")
 IS_VERIFY = True if os.environ.get("IS_VERIFY", "True").lower() == "true" else False
-VERIFY_EXPIRE = int(os.environ.get("VERIFY_EXPIRE", "86400"))
+VERIFY_EXPIRE = int(os.environ.get("VERIFY_EXPIRE", "28800"))  # 8 hours = 28800 seconds
 VERIFY_TUTORIAL = os.environ.get("VERIFY_TUTORIAL", "https://t.me/How_to_open_file_to_link")
 
 try:
