@@ -104,10 +104,11 @@ async def start_command(client: Client, message: Message):
                 await set_verified(user_id)
                 await message.reply_text(
                     f"<b>✅ Token Successfully Verified!</b>\n\n"
-                    f"You now have unrestricted access for the next <b>{verify_expire_time}</b>. You can now access your requested files."
+                    f"You now have unrestricted access for the next <b>{verify_expire_time}</b>. You can now access your requested files.",
+                    parse_mode=ParseMode.HTML
                 )
             else:
-                await message.reply_text("<b>❌ Invalid or Expired Token!</b>\n\nPlease try generating a new token.")
+                await message.reply_text("<b>❌ Invalid or Expired Token!</b>\n\nPlease try generating a new token.", parse_mode=ParseMode.HTML)
             return
 
         # --- 2. Check Verification for File Access ---
@@ -129,6 +130,7 @@ async def start_command(client: Client, message: Message):
                     f"You must verify your token to download this file.\n"
                     f"Click on <b>'Verify Token'</b> below to get access (Valid for <b>{verify_expire_time}</b>).",
                     reply_markup=InlineKeyboardMarkup(verify_buttons),
+                    parse_mode=ParseMode.HTML,
                     protect_content=True
                 )
                 return
@@ -205,7 +207,8 @@ async def start_command(client: Client, message: Message):
 
         k = await client.send_message(
             chat_id=message.from_user.id,
-            text=f"<b>❗️ <u>IMPORTANT</u> ❗️</b>\n\nThis Video / File Will Be Deleted In {file_auto_delete} (Due To Copyright Issues).\n\n📌 Please Forward This Video / File To Somewhere Else And Start Downloading There."
+            text=f"<b>❗️ <u>IMPORTANT</u> ❗️</b>\n\nThis Video / File Will Be Deleted In {file_auto_delete} (Due To Copyright Issues).\n\n📌 Please Forward This Video / File To Somewhere Else And Start Downloading There.",
+            parse_mode=ParseMode.HTML
         )
 
         asyncio.create_task(delete_files(madflix_msgs, client, k))
@@ -219,30 +222,34 @@ async def not_joined(client: Client, message: Message):
     await send_styled_start(client, message)
 
 
-# --- Callback Handler for 'Try Again / Verify' Button ---
-@Bot.on_callback_query(filters.regex('^check_verification$'))
+# --- Callback Handler with 100% Reliable Matching Filter ---
+check_filter = filters.create(lambda _, __, query: query.data == "check_verification")
+
+@Bot.on_callback_query(check_filter)
 async def check_verification_callback(client: Client, query: CallbackQuery):
     user_id = query.from_user.id
 
     try:
-        # Shobar aage instant callback acknowledgement jate loading clock na ghure
+        # Shobar aage loader dismiss kora
         await query.answer()
 
-        # 1. Force Subscription check kora
+        # 1. Force Subscription check
         sub_status = await is_subscribed(None, client, query)
         if not sub_status:
             await client.send_message(
                 chat_id=user_id,
-                text="<b>❌ You haven't joined all required channels yet!</b>\n\nPlease join all channels shown above and tap <b>'Try Again / Verify'</b> again."
+                text="<b>❌ You haven't joined all required channels yet!</b>\n\nPlease join all channels shown above and tap <b>'Try Again / Verify'</b> again.",
+                parse_mode=ParseMode.HTML
             )
             return
 
-        # 2. Token verification status check kora
+        # 2. Token verification check
         if IS_VERIFY and (user_id not in ADMINS) and (SHORTLINK_URL and SHORTLINK_API):
             if await is_user_verified(user_id):
                 await client.send_message(
                     chat_id=user_id,
-                    text=f"<b>✅ You are already verified!</b>\n\nYou have unrestricted access for <b>{verify_expire_time}</b>. Enjoy downloading your files!"
+                    text=f"<b>✅ You are already verified!</b>\n\nYou have unrestricted access for <b>{verify_expire_time}</b>. Enjoy downloading your files!",
+                    parse_mode=ParseMode.HTML
                 )
                 return
             else:
@@ -265,20 +272,23 @@ async def check_verification_callback(client: Client, query: CallbackQuery):
                         f"Click on <b>'Verify Token'</b> below to get access (Valid for <b>{verify_expire_time}</b>)."
                     ),
                     reply_markup=InlineKeyboardMarkup(verify_buttons),
+                    parse_mode=ParseMode.HTML,
                     protect_content=True
                 )
                 return
         else:
             await client.send_message(
                 chat_id=user_id,
-                text="<b>✅ You are verified!</b>\n\nYou have full access to this bot."
+                text="<b>✅ You are verified!</b>\n\nYou have full access to this bot.",
+                parse_mode=ParseMode.HTML
             )
     except Exception as e:
         print(f"Error in check_verification callback: {e}")
         try:
             await client.send_message(
                 chat_id=user_id,
-                text="<b>⚠️ Something went wrong!</b> Please send /start and try again."
+                text="<b>⚠️ Something went wrong!</b> Please send /start again.",
+                parse_mode=ParseMode.HTML
             )
         except Exception:
             pass
