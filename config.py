@@ -41,21 +41,29 @@ VERIFY_EXPIRE = int(os.environ.get("VERIFY_EXPIRE", "28800"))  # 8 hours = 28800
 VERIFY_TUTORIAL = os.environ.get("VERIFY_TUTORIAL", "https://t.me/How_to_open_file_to_link")
 
 # --- Premium / Indian UPI Payment Settings ---
-UPI_ID = os.environ.get("UPI_ID", "your_upi_id@okhdfcbank")  # Apnar personal/merchant UPI ID boshaban
+UPI_ID = os.environ.get("UPI_ID", "your_upi_id@okhdfcbank")  # Apnar UPI ID boshaban
 UPI_QR_URL = os.environ.get("UPI_QR_URL", "https://graph.org/file/56b5deb73f3b132e2bb73.jpg")  # Apnar Scanner QR photo-r link
 
+# Reference layout onujayi exact text format
 PREMIUM_PLANS_TEXT = os.environ.get(
     "PREMIUM_PLANS_TEXT",
-    """<b>💎 Premium Membership Plans:</b>
+    """✦ <b>PREMIUM PLANS:</b> ❞
+━━━━━━━━━━━━━━━━━━━━
+<b>PERKS:</b>
+❒ UNLIMITED DAILY LINKS
+❒ FREE LINK BYPASS
+❒ PROTECT-CONTENT BYPASS
+━━━━━━━━━━━━━━━━━━━━
+<b>AVAILABLE PLANS:</b>
 
-🥉 <b>7 Days:</b> ₹29
-🥈 <b>1 Month (30 Days):</b> ₹79
-🥇 <b>Lifetime:</b> ₹199
+›› <b>1 Day :</b> ₹19
+›› <b>7 Days :</b> ₹68
+›› <b>30 Days :</b> ₹169
+›› <b>3 Months :</b> ₹299
+›› <b>1 Year :</b> ₹599
 
-<b>✨ Premium Benefits:</b>
-• Direct Instant Download (No Shortener / No Ads)
-• No 8-hour token verification hassle
-• Instant Access to all files directly!"""
+✦ <b>AFTER PAYMENT:</b> ❞
+Send your 12-digit UPI UTR / Transaction ID for instant activation!"""
 )
 
 try:
