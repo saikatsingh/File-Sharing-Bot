@@ -80,7 +80,7 @@ async def set_verified(user_id: int):
     )
 
 
-# --- Premium Subscription Functions ---
+# --- Premium Subscription Functions (1D, 7D, 30D, 90D, 365D) ---
 
 async def is_premium_user(user_id: int) -> bool:
     user = user_data.find_one({'_id': user_id})
@@ -92,15 +92,12 @@ async def is_premium_user(user_id: int) -> bool:
         return False
 
     expire_time = user.get("premium_expire", 0)
-    # 0 hole Lifetime plan
-    if expire_time == 0:
-        return True
 
-    # Current epoch timestamp-er sathe check kora
+    # Current time-er sathe expiry check
     if time.time() < expire_time:
         return True
     else:
-        # Time sesh hoye gele auto-downgrade
+        # Time sesh hoye gele auto-remove premium
         user_data.update_one(
             {'_id': user_id},
             {
@@ -114,17 +111,21 @@ async def is_premium_user(user_id: int) -> bool:
 
 
 async def add_premium(user_id: int, days: int = 30):
-    if days == 0:
-        expire_time = 0  # 0 indicates Lifetime
+    # Jodi age thekei premium thake ebong validity thake, tobe tar sathe notun din jog hobe
+    user = user_data.find_one({'_id': user_id})
+    current_time = time.time()
+    
+    if user and user.get("is_premium", False) and user.get("premium_expire", 0) > current_time:
+        new_expire = user["premium_expire"] + (days * 86400)
     else:
-        expire_time = time.time() + (days * 86400)
+        new_expire = current_time + (days * 86400)
 
     user_data.update_one(
         {'_id': user_id},
         {
             '$set': {
                 'is_premium': True,
-                'premium_expire': expire_time
+                'premium_expire': new_expire
             }
         },
         upsert=True
@@ -148,10 +149,11 @@ async def get_premium_status(user_id: int):
     if not user or not user.get("is_premium", False):
         return None
     expire_time = user.get("premium_expire", 0)
-    if expire_time == 0:
-        return "Lifetime"
     remaining_seconds = expire_time - time.time()
+    
     if remaining_seconds > 0:
         remaining_days = round(remaining_seconds / 86400, 1)
+        if remaining_days >= 365:
+            return "1 Year"
         return f"{remaining_days} Days"
     return "Expired"
