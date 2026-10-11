@@ -1,55 +1,64 @@
 import os, asyncio, humanize, random
 from pyrogram import Client, filters, __version__
 from pyrogram.enums import ParseMode
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pyrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated
 from bot import Bot
 from config import (
     ADMINS, FORCE_MSG, START_MSG, CUSTOM_CAPTION, DISABLE_CHANNEL_BUTTON, 
     PROTECT_CONTENT, FILE_AUTO_DELETE, IS_VERIFY, SHORTLINK_URL, SHORTLINK_API, VERIFY_TUTORIAL,
-    VERIFY_EXPIRE, FORCE_SUB_CHANNELS, START_PICS
+    VERIFY_EXPIRE, FORCE_SUB_CHANNELS, START_PICS, OWNER_ID
 )
 from helper_func import subscribed, encode, decode, get_messages, get_shortlink, get_random_pic_data
 from database.database import (
     add_user, del_user, full_userbase, present_user, 
     is_user_verified, update_verify_status, get_verify_token, set_verified,
-    is_premium_user  # Premium check import kora holo
+    is_premium_user
 )
 
 file_auto_delete = humanize.naturaldelta(FILE_AUTO_DELETE)
 verify_expire_time = humanize.naturaldelta(VERIFY_EXPIRE)
 
 
-async def send_styled_start(client: Client, message: Message, deep_link: str = ""):
+def get_start_buttons(client: Client, deep_link: str = ""):
     buttons = []
     
     # 1. Force Sub Channel join buttons
     for idx, channel_id in enumerate(FORCE_SUB_CHANNELS, start=1):
-        try:
-            chat = await client.get_chat(channel_id)
-            invite_link = chat.invite_link or await client.export_chat_invite_link(channel_id)
-            buttons.append([InlineKeyboardButton(text=f"👉 Join Channel {idx} 👈", url=invite_link)])
-        except Exception as e:
-            print(f"Error getting invite link for channel {channel_id}: {e}")
+        buttons.append([InlineKeyboardButton(text=f"👉 Join Channel {idx} 👈", url=f"https://t.me/{client.username}")])
 
-    bot_username = client.username or (await client.get_me()).username
+    bot_username = client.username or "Bot"
 
-    # 2. File link theke ashle tokhon-i sudhu 'Try Again' button ashbe
+    # 2. File link thakle Try Again button ashbe
     if deep_link:
         try_again_url = f"https://t.me/{bot_username}?start={deep_link}"
         buttons.append([InlineKeyboardButton(text="🔄 Try Again", url=try_again_url)])
 
-    # 3. Custom text message
+    # 3. Screenshot er moto Premium, Admin, Help Menu & Close buttons
+    buttons.append([
+        InlineKeyboardButton("⭐ PREMIUM", callback_data="open_premium_menu"),
+        InlineKeyboardButton("👨‍💼 ADMIN", url=f"tg://user?id={OWNER_ID}")
+    ])
+    buttons.append([
+        InlineKeyboardButton("⌛ Help Menu", callback_data="open_help_menu"),
+        InlineKeyboardButton("🔒 Close", callback_data="close_message")
+    ])
+
+    return InlineKeyboardMarkup(buttons)
+
+
+async def send_styled_start(client: Client, message: Message, deep_link: str = ""):
     user_name = message.from_user.first_name if message.from_user else "User"
+    bot_username = client.username or (await client.get_me()).username
+
     caption_text = f"""Hey {user_name}
 Welcome to @{bot_username}
 
-🥵🥵Join Below Channels And Tap Try Again To Continue 🍑🍑""" if deep_link else f"""Hey {user_name}
-Welcome to @{bot_username}
+🥵🥵Join Below Channels And Tap Try Again To Continue 🍑🍑""" if deep_link else f"""Hello {user_name}
 
-🥵🥵Join Below Channels To Continue 🍑🍑"""
+I can store private files in Specified Channel and other users can access it from special link."""
 
-    # 4. Image fetch & send
+    markup = get_start_buttons(client, deep_link)
     raw_url = random.choice(START_PICS) if START_PICS else None
     
     if raw_url:
@@ -58,7 +67,7 @@ Welcome to @{bot_username}
                 await message.reply_photo(
                     photo=raw_url,
                     caption=caption_text,
-                    reply_markup=InlineKeyboardMarkup(buttons),
+                    reply_markup=markup,
                     quote=True
                 )
                 return
@@ -71,7 +80,7 @@ Welcome to @{bot_username}
                 await message.reply_photo(
                     photo=photo_buffer,
                     caption=caption_text,
-                    reply_markup=InlineKeyboardMarkup(buttons),
+                    reply_markup=markup,
                     quote=True
                 )
                 return
@@ -80,7 +89,7 @@ Welcome to @{bot_username}
 
     await message.reply_text(
         text=caption_text,
-        reply_markup=InlineKeyboardMarkup(buttons),
+        reply_markup=markup,
         quote=True,
         disable_web_page_preview=True
     )
@@ -116,7 +125,7 @@ async def start_command(client: Client, message: Message):
         except:
             return
 
-        # 1. Token Verification Return Process (User shortlink pass kore fire ashle)
+        # 1. Token Verification Return Process
         if base64_string.startswith("verify_"):
             token = base64_string.split("verify_", 1)[1]
             saved_token = await get_verify_token(user_id)
@@ -131,10 +140,9 @@ async def start_command(client: Client, message: Message):
                 await message.reply_text("<b>❌ Invalid or Expired Token!</b>\n\nPlease try generating a new token.", parse_mode=ParseMode.HTML)
             return
 
-        # 2. Check Premium & 8 Hours Token Verification for File Access
-        # Jodi user Premium hoy ba Admin hoy -> Kono Token bypass lagbe na, direct file pabe!
+        # 2. Check Premium & 8 Hours Verification for File Access
         if await is_premium_user(user_id) or (user_id in ADMINS):
-            pass  # Direct file retrieval section-e chole jabe
+            pass  # Premium users get direct file access!
         elif IS_VERIFY and (SHORTLINK_URL and SHORTLINK_API):
             if not await is_user_verified(user_id):
                 chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -143,18 +151,17 @@ async def start_command(client: Client, message: Message):
                 
                 verification_url = f"https://t.me/{client.username}?start=verify_{random_token}"
                 shortened_url = await get_shortlink(verification_url)
-                bot_username = client.username or (await client.get_me()).username
                 
                 verify_buttons = [
                     [InlineKeyboardButton("🔓 Verify Token (Click Here)", url=shortened_url)],
                     [InlineKeyboardButton("Tutorial (How To Verify)", url=VERIFY_TUTORIAL)],
-                    [InlineKeyboardButton("⚡ Buy Premium (No Ads)", url=f"https://t.me/{bot_username}?start=premium")]
+                    [InlineKeyboardButton("⭐ Buy Premium (No Ads)", callback_data="open_premium_menu")]
                 ]
                 await message.reply_text(
                     f"<b>⚠️ Access Denied! Verification Required.</b>\n\n"
                     f"You must complete token verification to download this file.\n\n"
                     f"Click on <b>'Verify Token'</b> below to get access (Valid for <b>{verify_expire_time}</b>) "
-                    f"or get <b>Premium</b> to skip all ads forever!",
+                    f"or tap <b>Buy Premium</b> to skip all ads!",
                     reply_markup=InlineKeyboardMarkup(verify_buttons),
                     parse_mode=ParseMode.HTML,
                     protect_content=True
@@ -240,8 +247,60 @@ async def start_command(client: Client, message: Message):
         asyncio.create_task(delete_files(madflix_msgs, client, k))
         return
 
-    # Normal /start command (Kono file code chara)
+    # Normal /start command
     await send_styled_start(client, message, deep_link="")
+
+
+# --- Close Button Callback ---
+@Bot.on_callback_query(filters.regex('^close_message$'))
+async def close_callback(client: Client, query: CallbackQuery):
+    await query.message.delete()
+
+
+# --- Help Menu Callback (Screenshot onujayi) ---
+@Bot.on_callback_query(filters.regex('^open_help_menu$'))
+async def help_callback(client: Client, query: CallbackQuery):
+    await query.answer()
+    help_text = """○ <b>OWNER :</b> Admin
+
+📝 <b>Basic Users Commands:</b>
+
+• /start - Start the bot
+• /help - Open help menu
+• /myplan - Check premium status
+
+💡 <b>Tip:</b> Use /myplan to see your subscription details!
+
+╭ <b>File Access:</b> ❞
+• Click on any file link to access shared content.
+• Premium users get unlimited access!!"""
+
+    buttons = [
+        [
+            InlineKeyboardButton("⬅️ BACK", callback_data="back_to_start_home"),
+            InlineKeyboardButton("CLOSE ❌", callback_data="close_message")
+        ]
+    ]
+    await query.message.edit_caption(
+        caption=help_text,
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode=ParseMode.HTML
+    )
+
+
+@Bot.on_callback_query(filters.regex('^back_to_start_home$'))
+async def back_to_start_callback(client: Client, query: CallbackQuery):
+    await query.answer()
+    user_name = query.from_user.first_name if query.from_user else "User"
+    caption_text = f"""Hello {user_name}
+
+I can store private files in Specified Channel and other users can access it from special link."""
+    markup = get_start_buttons(client)
+    await query.message.edit_caption(
+        caption=caption_text,
+        reply_markup=markup,
+        parse_mode=ParseMode.HTML
+    )
 
 
 @Bot.on_message(filters.command('users') & filters.private & filters.user(ADMINS))
