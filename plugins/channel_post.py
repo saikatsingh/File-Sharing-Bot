@@ -11,7 +11,15 @@ from helper_func import encode
 logger = logging.getLogger(__name__)
 
 
-@Bot.on_message(filters.private & filters.user(ADMINS) & ~filters.command(['start', 'users', 'broadcast', 'batch', 'genlink', 'stats']))
+# Shob dhoroner Bot Commands exclude kora holo jate link generate na hoy
+EXCLUDED_COMMANDS = [
+    'start', 'help', 'myplan', 'plans', 'buy', 'premium', 
+    'users', 'broadcast', 'batch', 'genlink', 'stats', 
+    'add_premium', 'remove_premium'
+]
+
+
+@Bot.on_message(filters.private & filters.user(ADMINS) & ~filters.command(EXCLUDED_COMMANDS))
 async def channel_post(client: Client, message: Message):
     reply_text = await message.reply_text("Please Wait...!", quote=True)
     try:
@@ -27,7 +35,8 @@ async def channel_post(client: Client, message: Message):
     converted_id = post_message.id * abs(client.db_channel.id)
     string = f"get-{converted_id}"
     base64_string = await encode(string)
-    link = f"https://t.me/{client.username}?start={base64_string}"
+    bot_uname = client.username or (await client.get_me()).username
+    link = f"https://t.me/{bot_uname}?start={base64_string}"
 
     admin_markup = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔗 Get File Link", url=link)],
