@@ -38,7 +38,7 @@ def get_plans_buttons():
 
 
 async def safe_edit(message: Message, text: str, markup: InlineKeyboardMarkup):
-    """Photo message hole edit_caption korbe, normal message hole edit_text korbe"""
+    """Photo message hole edit_caption korbe, text message hole edit_text korbe"""
     try:
         if message.photo:
             await message.edit_caption(caption=text, reply_markup=markup, parse_mode=ParseMode.HTML)
@@ -102,7 +102,11 @@ async def premium_intro(client: Client, update):
 
     if is_callback:
         await update.answer()
-        await safe_edit(update.message, text, markup)
+        # Photo start message theke ashle natun message pathano shobcheye safe
+        try:
+            await update.message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+        except Exception:
+            await client.send_message(chat_id=user_id, text=text, reply_markup=markup, parse_mode=ParseMode.HTML)
     else:
         await update.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
 
@@ -122,7 +126,17 @@ async def back_to_premium_home_cb(client: Client, query: CallbackQuery):
         [InlineKeyboardButton("💳 Pay with UPI", callback_data="view_upi_plans")],
         [InlineKeyboardButton("🔒 Close", callback_data="close_message")]
     ]
-    await safe_edit(query.message, text, InlineKeyboardMarkup(buttons))
+    markup = InlineKeyboardMarkup(buttons)
+
+    # Cancel kore back ashle jodi photo message hoy tobe delete kore fresh message pathabe
+    if query.message.photo:
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        await client.send_message(chat_id=query.from_user.id, text=text, reply_markup=markup, parse_mode=ParseMode.HTML)
+    else:
+        await safe_edit(query.message, text, markup)
 
 
 # --- '💳 Pay with UPI' tap korle plans list show kora ---
