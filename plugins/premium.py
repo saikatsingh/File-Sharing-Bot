@@ -4,7 +4,7 @@ from pyrogram.enums import ParseMode
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from bot import Bot
 from config import ADMINS, UPI_ID, UPI_QR_URL, PREMIUM_PLANS_TEXT
-from database.database import is_premium_user, add_premium, get_premium_status
+from database.database import is_premium_user, add_premium, remove_premium, get_premium_status
 
 AWAITING_UTR = {}
 
@@ -165,8 +165,8 @@ After payment, send your <b>12-digit UTR number</b> here!"""
     await query.message.edit_text(caption, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
 
 
-# --- UTR input dhora ---
-@Bot.on_message(filters.private & filters.text & ~filters.command(['start', 'plans', 'buy', 'premium', 'myplan', 'broadcast', 'users']))
+# --- UTR input dhora (Auto Alert to Admin) ---
+@Bot.on_message(filters.private & filters.text & ~filters.command(['start', 'plans', 'buy', 'premium', 'myplan', 'broadcast', 'users', 'add_premium', 'remove_premium']))
 async def utr_listener(client: Client, message: Message):
     user_id = message.from_user.id
     if user_id not in AWAITING_UTR:
@@ -215,6 +215,7 @@ async def utr_listener(client: Client, message: Message):
             print(f"Error alerting admin {admin_id}: {e}")
 
 
+# --- 1-Click Auto Approval Callback ---
 @Bot.on_callback_query(filters.regex('^adm_app_'))
 async def approve_cb(client: Client, query: CallbackQuery):
     if query.from_user.id not in ADMINS:
@@ -242,6 +243,7 @@ async def approve_cb(client: Client, query: CallbackQuery):
         print(f"Error messaging user: {e}")
 
 
+# --- 1-Click Auto Reject Callback ---
 @Bot.on_callback_query(filters.regex('^adm_rej_'))
 async def reject_cb(client: Client, query: CallbackQuery):
     if query.from_user.id not in ADMINS:
@@ -263,3 +265,75 @@ async def reject_cb(client: Client, query: CallbackQuery):
         )
     except Exception as e:
         print(f"Error messaging user: {e}")
+
+
+# --- Manual Admin Commands to Directly Add/Remove Premium ---
+
+@Bot.on_message(filters.command('add_premium') & filters.private & filters.user(ADMINS))
+async def manual_add_premium(client: Client, message: Message):
+    if len(message.command) < 3:
+        await message.reply_text(
+            "<b>⚠️ Usage Format:</b>\n<code>/add_premium [User_ID] [Days]</code>\n\n<b>Example:</b>\n<code>/add_premium 123456789 30</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    try:
+        target_id = int(message.command[1])
+        days = int(message.command[2])
+    except ValueError:
+        await message.reply_text("<b>❌ User ID and Days must be valid numbers!</b>", parse_mode=ParseMode.HTML)
+        return
+
+    await add_premium(target_id, days)
+    plan_name = f"{days} Days" if days != 365 else "1 Year"
+
+    await message.reply_text(
+        f"<b>✅ Successfully added Premium!</b>\n\n"
+        f"👤 <b>User ID:</b> <code>{target_id}</code>\n"
+        f"⏳ <b>Validity:</b> <b>{plan_name}</b>",
+        parse_mode=ParseMode.HTML
+    )
+
+    try:
+        await client.send_message(
+            chat_id=target_id,
+            text=f"<b>🎉 You have been gifted Premium Membership!</b>\n\n"
+                 f"Validity: <b>{plan_name}</b>\n"
+                 f"Enjoy unlimited direct file downloads without any link bypass or ads.",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        print(f"Could not notify user {target_id}: {e}")
+
+
+@Bot.on_message(filters.command('remove_premium') & filters.private & filters.user(ADMINS))
+async def manual_remove_premium(client: Client, message: Message):
+    if len(message.command) < 2:
+        await message.reply_text(
+            "<b>⚠️ Usage Format:</b>\n<code>/remove_premium [User_ID]</code>\n\n<b>Example:</b>\n<code>/remove_premium 123456789</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    try:
+        target_id = int(message.command[1])
+    except ValueError:
+        await message.reply_text("<b>❌ User ID must be a valid number!</b>", parse_mode=ParseMode.HTML)
+        return
+
+    await remove_premium(target_id)
+
+    await message.reply_text(
+        f"<b>✅ Premium removed for User:</b> <code>{target_id}</code>",
+        parse_mode=ParseMode.HTML
+    )
+
+    try:
+        await client.send_message(
+            chat_id=target_id,
+            text="<b>⚠️ Your Premium access has been removed or revoked by Admin.</b>",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        print(f"Could not notify user {target_id}: {e}")
