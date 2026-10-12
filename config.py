@@ -18,7 +18,7 @@ MAIN_CHANNEL_ID = int(os.environ.get("MAIN_CHANNEL_ID", "-1004420561870"))
 
 # FORCE_SUB_CHANNELS e space diye multiple channel id dite parben
 FORCE_SUB_CHANNELS = [
-    int(x) for x in os.environ.get("FORCE_SUB_CHANNELS", "-1004396186497 -1002666935141").split() if x
+    int(x) for x in os.environ.get("FORCE_SUB_CHANNELS", "-1004396186497 -1004420561870 -1004316896651").split() if x
 ]
 
 FORCE_SUB_CHANNEL = FORCE_SUB_CHANNELS[0] if FORCE_SUB_CHANNELS else None
