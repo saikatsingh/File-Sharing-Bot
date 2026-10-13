@@ -52,7 +52,6 @@ def create_image_collage(image_paths: list) -> str:
 
     images = [Image.open(p) for p in image_paths]
     
-    # Width equal rakhar jonno prothom chobir width standard dhora holo
     target_width = images[0].width
     resized_images = []
     total_height = 0
@@ -60,7 +59,6 @@ def create_image_collage(image_paths: list) -> str:
     for img in images:
         if img.mode != 'RGB':
             img = img.convert('RGB')
-        # Aspect ratio thik rekhe resize
         w_percent = target_width / float(img.width)
         h_size = int(float(img.height) * float(w_percent))
         img_resized = img.resize((target_width, h_size), Image.Resampling.LANCZOS)
@@ -121,7 +119,7 @@ async def thumb_command_channel(client: Client, message: Message):
         try:
             await client.send_message(
                 chat_id=admin_id,
-                text=f"🖼 <b>Change Thumbnail Request</b>\n\nTarget Post ID: <code>{target_msg.id}</code> in channel.\n\n👉 <b>Please send the new image/photos now.</b> (You can send 1, 2, or 3 images together!)",
+                text=f"🖼 <b>Change Thumbnail Request</b>\n\nTarget Post ID: <code>{target_msg.id}</code> in channel.\n\n👉 <b>Please send the new image/photos now.</b> (1, 2, or 3 images)",
                 reply_markup=cancel_btn
             )
         except Exception as e:
@@ -138,7 +136,7 @@ async def handle_admin_thumb_input(client: Client, message: Message):
     process = THUMB_PROCESS[admin_id]
     step = process.get("step")
 
-    # Step A: Admin sent Photo(s)
+    # Step A: Photo(s)
     if step == "waiting_photo":
         if not message.photo:
             await message.reply_text("⚠️ Please send an image/photo for the thumbnail!")
@@ -150,7 +148,6 @@ async def handle_admin_thumb_input(client: Client, message: Message):
             return
 
         THUMB_MEDIA_LOCKS[admin_id] = True
-        # 3 second wait korbe jate 2-3 ta photo pathale shobgulo collect hoye jay
         await asyncio.sleep(3.0)
         THUMB_MEDIA_LOCKS.pop(admin_id, None)
 
@@ -173,7 +170,6 @@ async def handle_admin_thumb_input(client: Client, message: Message):
             await msg_wait.edit_text("❌ Failed to process images. Please try again.")
             return
 
-        # 1-ti thakle direct, 2-3ti thakle auto-collage
         final_thumb_file = create_image_collage(downloaded_paths)
         process["final_local_image"] = final_thumb_file
         process["temp_files_to_clean"] = downloaded_paths
@@ -194,7 +190,7 @@ async def handle_admin_thumb_input(client: Client, message: Message):
         )
         return
 
-    # Step B: Admin sent Text Caption
+    # Step B: Text Caption
     elif step == "waiting_caption":
         new_caption = message.text.html if message.text else process["original_caption"]
         await apply_new_thumbnail(client, admin_id, new_caption)
@@ -230,7 +226,6 @@ async def apply_new_thumbnail(client: Client, admin_id: int, final_caption: str)
             text=f"❌ <b>Failed to update post!</b>\n\nError: <code>{e}</code>"
         )
     finally:
-        # Cleanup temporary files
         for p in temp_files:
             if os.path.exists(p):
                 try:
@@ -249,7 +244,7 @@ async def apply_new_thumbnail(client: Client, admin_id: int, final_caption: str)
 async def skip_caption_callback(client: Client, query: CallbackQuery):
     admin_id = query.from_user.id
     if admin_id not in THUMB_PROCESS:
-        await query.answer("No active thumbnail change session!", show_alert=True)
+        await query.answer("No active session!", show_alert=True)
         return
 
     await query.answer()
@@ -263,7 +258,6 @@ async def cancel_thumb_callback(client: Client, query: CallbackQuery):
     admin_id = query.from_user.id
     if admin_id in THUMB_PROCESS:
         process = THUMB_PROCESS.pop(admin_id)
-        # Temp cleanup on cancel
         for p in process.get("temp_files_to_clean", []):
             if os.path.exists(p):
                 try:
@@ -317,7 +311,7 @@ async def channel_post(client: Client, message: Message):
 
 # --- 6. BATCH WORKFLOW CORE EXECUTION ---
 async def process_batch_files(client: Client, channel_id: int, messages_list: list):
-    """Multiple videos ke DB channel-e pathiye ekta Batch link toiri kore"""
+    """Multiple media (video, photo, document, audio) ke DB channel-e pathiye ekta Batch link toiri kore"""
     if not messages_list:
         return
 
@@ -326,11 +320,18 @@ async def process_batch_files(client: Client, channel_id: int, messages_list: li
     common_caption = None
 
     for msg in messages_list:
-        media = msg.video or msg.document
+        # Check jekono media: Video, Photo, Document ba Audio
+        media = msg.video or msg.document or msg.photo or msg.audio
         if not media:
             continue
-        if not first_thumb_file_id and media.thumbs:
-            first_thumb_file_id = media.thumbs[0].file_id
+
+        # Thumbnail extract kora (video/doc er thumbs thakle, ba direct photo file_id)
+        if not first_thumb_file_id:
+            if msg.photo:
+                first_thumb_file_id = msg.photo.file_id
+            elif getattr(media, "thumbs", None):
+                first_thumb_file_id = media.thumbs[0].file_id
+
         if not common_caption and msg.caption:
             common_caption = clean_external_caption(msg.caption.html)
 
@@ -354,12 +355,12 @@ async def process_batch_files(client: Client, channel_id: int, messages_list: li
         single_id = copied_ids[0] * db_channel_id
         string = f"get-{single_id}"
         btn_text = "📥 Download File"
-        def_cap = common_caption if common_caption else "🎬 <b>Video File Attached</b>"
+        def_cap = common_caption if common_caption else "🎬 <b>Media File Attached</b>"
     else:
         first_id = min(copied_ids) * db_channel_id
         last_id = max(copied_ids) * db_channel_id
         string = f"get-{first_id}-{last_id}"
-        btn_text = f"📦 Download Batch Files ({len(copied_ids)} Videos)"
+        btn_text = f"📦 Download Batch Files ({len(copied_ids)} Files)"
         def_cap = common_caption if common_caption else f"📦 <b>Batch Collection ({len(copied_ids)} Files)</b>"
 
     base64_string = await encode(string)
@@ -396,6 +397,7 @@ async def process_batch_files(client: Client, channel_id: int, messages_list: li
             disable_web_page_preview=True
         )
 
+    # Public Channel theke original media-gulo delete kora
     for msg in messages_list:
         try:
             await msg.delete()
@@ -403,28 +405,37 @@ async def process_batch_files(client: Client, channel_id: int, messages_list: li
             pass
 
 
-# --- 7. AUTO REPLACE WORKFLOW (PUBLIC CHANNEL INCOMING VIDEO) ---
-@Bot.on_message(filters.channel & filters.incoming & filters.chat(MAIN_CHANNEL_ID))
+# --- 7. AUTO REPLACE WORKFLOW (PUBLIC CHANNEL INCOMING POSTS) ---
+@Bot.on_message(filters.chat(MAIN_CHANNEL_ID))
 async def new_post(client: Client, message: Message):
     if DISABLE_CHANNEL_BUTTON:
         return
 
-    media = message.video or message.document
-    if not media:
+    # 1. Jodi command hoy (jemon /thumb), niche jabe na (command handler e dhorbe)
+    if message.text and message.text.startswith('/'):
+        return
+
+    # 2. Jodi shudhu plain text message hoy (kono video, photo, doc nei), ignore korbe
+    has_media = bool(message.video or message.document or message.photo or message.audio)
+    if not has_media:
         return
 
     channel_id = message.chat.id
 
+    # Queue-te shob media collect kora
     if channel_id not in CHANNEL_QUEUE:
         CHANNEL_QUEUE[channel_id] = []
     
     CHANNEL_QUEUE[channel_id].append(message)
 
+    # Jodi already timer active thake, aro incoming messages dhorbe
     if channel_id in CHANNEL_LOCKS:
         return
 
     CHANNEL_LOCKS[channel_id] = True
-    await asyncio.sleep(4.0)
+    
+    # Dynamic Buffer: 16-20 ta forward ashle sob collect hote 5 second buffer dewa holo
+    await asyncio.sleep(5.0)
 
     msgs = CHANNEL_QUEUE.pop(channel_id, [])
     CHANNEL_LOCKS.pop(channel_id, None)
