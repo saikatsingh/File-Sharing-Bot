@@ -23,10 +23,11 @@ THUMB_MEDIA_LOCKS = {}
 CHANNEL_QUEUE = {}
 CHANNEL_LOCKS = {}
 
+# Shob dhoroner Bot Commands exclude kora holo jate link generate na hoy
 EXCLUDED_COMMANDS = [
     'start', 'help', 'myplan', 'plans', 'buy', 'premium', 
-    'users', 'broadcast', 'batch', 'genlink', 'stats', 
-    'add_premium', 'remove_premium', 'thumb'
+    'users', 'broadcast', 'batch', 'genlink', 'stats', 'status',
+    'add_premium', 'remove_premium', 'thumb', 'ban', 'unban', 'cleardb'
 ]
 
 
@@ -320,12 +321,10 @@ async def process_batch_files(client: Client, channel_id: int, messages_list: li
     common_caption = None
 
     for msg in messages_list:
-        # Check jekono media: Video, Photo, Document ba Audio
         media = msg.video or msg.document or msg.photo or msg.audio
         if not media:
             continue
 
-        # Thumbnail extract kora (video/doc er thumbs thakle, ba direct photo file_id)
         if not first_thumb_file_id:
             if msg.photo:
                 first_thumb_file_id = msg.photo.file_id
@@ -397,7 +396,6 @@ async def process_batch_files(client: Client, channel_id: int, messages_list: li
             disable_web_page_preview=True
         )
 
-    # Public Channel theke original media-gulo delete kora
     for msg in messages_list:
         try:
             await msg.delete()
@@ -411,30 +409,25 @@ async def new_post(client: Client, message: Message):
     if DISABLE_CHANNEL_BUTTON:
         return
 
-    # 1. Jodi command hoy (jemon /thumb), niche jabe na (command handler e dhorbe)
     if message.text and message.text.startswith('/'):
         return
 
-    # 2. Jodi shudhu plain text message hoy (kono video, photo, doc nei), ignore korbe
     has_media = bool(message.video or message.document or message.photo or message.audio)
     if not has_media:
         return
 
     channel_id = message.chat.id
 
-    # Queue-te shob media collect kora
     if channel_id not in CHANNEL_QUEUE:
         CHANNEL_QUEUE[channel_id] = []
     
     CHANNEL_QUEUE[channel_id].append(message)
 
-    # Jodi already timer active thake, aro incoming messages dhorbe
     if channel_id in CHANNEL_LOCKS:
         return
 
     CHANNEL_LOCKS[channel_id] = True
     
-    # Dynamic Buffer: 16-20 ta forward ashle sob collect hote 5 second buffer dewa holo
     await asyncio.sleep(5.0)
 
     msgs = CHANNEL_QUEUE.pop(channel_id, [])
