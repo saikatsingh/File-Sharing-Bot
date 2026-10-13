@@ -1,4 +1,5 @@
 import os
+import re
 import asyncio
 import logging
 from pyrogram import filters, Client
@@ -16,16 +17,38 @@ logger = logging.getLogger(__name__)
 # Track thumb editing state in admin PM
 THUMB_PROCESS = {}
 
-# Media Group / Batch Buffers
-MEDIA_GROUP_CACHE = {}
-ALBUM_LOCKS = {}
+# Channel-wide Sliding Batch Queue
+CHANNEL_QUEUE = {}
+CHANNEL_LOCKS = {}
 
-# Shob dhoroner Bot Commands exclude kora holo jate link generate na hoy
 EXCLUDED_COMMANDS = [
     'start', 'help', 'myplan', 'plans', 'buy', 'premium', 
     'users', 'broadcast', 'batch', 'genlink', 'stats', 
     'add_premium', 'remove_premium', 'thumb'
 ]
+
+
+def clean_external_caption(caption: str) -> str:
+    """Caption theke shob external links, usernames ebong hyperlinks remove kore"""
+    if not caption:
+        return ""
+    
+    # 1. HTML hyperlink <a href="...">Text</a> theke link fele shudhu 'Text' rakha
+    text = re.sub(r'<a\s+(?:[^>]*?\s+)?href="[^"]*"[^>]*>(.*?)</a>', r'\1', caption, flags=re.IGNORECASE)
+    
+    # 2. Markdown hyperlink [Text](url) theke url fele shudhu Text rakha
+    text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+    
+    # 3. Direct URLs (http, https, t.me, telegram.me) remove kora
+    text = re.sub(r'https?://\S+|t\.me/\S+|telegram\.me/\S+', '', text)
+    
+    # 4. Telegram @channel ba @user tags remove kora
+    text = re.sub(r'@\w+', '', text)
+    
+    # 5. Faltu blank lines & spaces clean kora
+    lines = [line.strip() for line in text.splitlines()]
+    clean_text = "\n".join([line for line in lines if line])
+    return clean_text.strip()
 
 
 # --- 1. CHANNEL E POST ER REPLY TE /thumb COMMAND ---
@@ -52,13 +75,11 @@ async def thumb_command_channel(client: Client, message: Message):
             pass
         return
 
-    # Delete the /thumb trigger message from channel to keep channel clean
     try:
         await message.delete()
     except Exception:
         pass
 
-    # Save target message context for Admin
     for admin_id in ADMINS:
         THUMB_PROCESS[admin_id] = {
             "channel_id": message.chat.id,
@@ -208,7 +229,7 @@ async def channel_post(client: Client, message: Message):
             logger.error(f"Error adding button to copied message: {e}")
 
 
-# --- 6. PUBLIC CHANNEL AUTO REPLACE & BATCH PROCESSOR ---
+# --- 6. BATCH WORKFLOW CORE EXECUTION ---
 async def process_batch_files(client: Client, channel_id: int, messages_list: list):
     """Multiple videos ke DB channel-e pathiye ekta Batch link toiri kore"""
     if not messages_list:
@@ -225,7 +246,7 @@ async def process_batch_files(client: Client, channel_id: int, messages_list: li
         if not first_thumb_file_id and media.thumbs:
             first_thumb_file_id = media.thumbs[0].file_id
         if not common_caption and msg.caption:
-            common_caption = msg.caption.html
+            common_caption = clean_external_caption(msg.caption.html)
 
         try:
             db_msg = await msg.copy(chat_id=client.db_channel.id, disable_notification=True)
@@ -247,13 +268,13 @@ async def process_batch_files(client: Client, channel_id: int, messages_list: li
         single_id = copied_ids[0] * db_channel_id
         string = f"get-{single_id}"
         btn_text = "📥 Download File"
-        def_cap = common_caption or "🎬 <b>Video File Attached</b>"
+        def_cap = common_caption if common_caption else "🎬 <b>Video File Attached</b>"
     else:
         first_id = min(copied_ids) * db_channel_id
         last_id = max(copied_ids) * db_channel_id
         string = f"get-{first_id}-{last_id}"
         btn_text = f"📦 Download Batch Files ({len(copied_ids)} Videos)"
-        def_cap = common_caption or f"📦 <b>Batch Collection ({len(copied_ids)} Files)</b>"
+        def_cap = common_caption if common_caption else f"📦 <b>Batch Collection ({len(copied_ids)} Files)</b>"
 
     base64_string = await encode(string)
     link = f"https://t.me/{bot_uname}?start={base64_string}"
@@ -289,6 +310,7 @@ async def process_batch_files(client: Client, channel_id: int, messages_list: li
             disable_web_page_preview=True
         )
 
+    # Public Channel theke original videos delete kora
     for msg in messages_list:
         try:
             await msg.delete()
@@ -296,6 +318,7 @@ async def process_batch_files(client: Client, channel_id: int, messages_list: li
             pass
 
 
+# --- 7. AUTO REPLACE WORKFLOW (PUBLIC CHANNEL INCOMING VIDEO) ---
 @Bot.on_message(filters.channel & filters.incoming & filters.chat(MAIN_CHANNEL_ID))
 async def new_post(client: Client, message: Message):
     if DISABLE_CHANNEL_BUTTON:
@@ -305,22 +328,25 @@ async def new_post(client: Client, message: Message):
     if not media:
         return
 
-    group_id = message.media_group_id
+    channel_id = message.chat.id
 
-    # 1. Multiple video eksathe ashle (Album/Media group)
-    if group_id:
-        if group_id not in MEDIA_GROUP_CACHE:
-            MEDIA_GROUP_CACHE[group_id] = []
-        MEDIA_GROUP_CACHE[group_id].append(message)
+    # Channel-wide Sliding Buffer (Aksathe 4-5 ta pathale queue te nebe)
+    if channel_id not in CHANNEL_QUEUE:
+        CHANNEL_QUEUE[channel_id] = []
+    
+    CHANNEL_QUEUE[channel_id].append(message)
 
-        if group_id not in ALBUM_LOCKS:
-            ALBUM_LOCKS[group_id] = True
-            await asyncio.sleep(3.5)
-            msgs = MEDIA_GROUP_CACHE.pop(group_id, [])
-            ALBUM_LOCKS.pop(group_id, None)
-            if msgs:
-                await process_batch_files(client, message.chat.id, msgs)
+    # Jodi already ekta timer active thake, ota collect korte thakbe
+    if channel_id in CHANNEL_LOCKS:
         return
 
-    # 2. Single video
-    await process_batch_files(client, message.chat.id, [message])
+    CHANNEL_LOCKS[channel_id] = True
+    # 4 second wait korbe jate shobgulo video channel-e deliver hoye jaay
+    await asyncio.sleep(4.0)
+
+    # Queue theke shob message niye Batch process kora
+    msgs = CHANNEL_QUEUE.pop(channel_id, [])
+    CHANNEL_LOCKS.pop(channel_id, None)
+
+    if msgs:
+        await process_batch_files(client, channel_id, msgs)
