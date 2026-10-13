@@ -30,6 +30,75 @@ async def del_user(user_id: int):
     return
 
 
+# --- User Ban / Unban System ---
+
+async def ban_user(user_id: int):
+    user_data.update_one(
+        {'_id': int(user_id)},
+        {'$set': {'banned': True}},
+        upsert=True
+    )
+
+
+async def unban_user(user_id: int):
+    user_data.update_one(
+        {'_id': int(user_id)},
+        {'$set': {'banned': False}},
+        upsert=True
+    )
+
+
+async def is_banned(user_id: int) -> bool:
+    user = user_data.find_one({'_id': int(user_id)})
+    return bool(user and user.get('banned', False))
+
+
+# --- Database Stats & Storage Info ---
+
+async def get_db_stats():
+    """MongoDB cluster storage ebong user count calculate kore"""
+    try:
+        stats = database.command("dbStats")
+        data_size = stats.get("dataSize", 0) / (1024 * 1024)       # MB
+        storage_size = stats.get("storageSize", 0) / (1024 * 1024) # MB
+    except Exception:
+        data_size = 0.0
+        storage_size = 0.0
+
+    total_users = user_data.count_documents({})
+    banned_users = user_data.count_documents({'banned': True})
+    premium_users = user_data.count_documents({'is_premium': True})
+
+    # MongoDB Atlas free cluster limit 512 MB
+    free_limit = 512.0
+    free_storage = max(0.0, free_limit - storage_size)
+
+    return {
+        "users": total_users,
+        "banned": banned_users,
+        "premium": premium_users,
+        "data_size": round(data_size, 2),
+        "storage_size": round(storage_size, 2),
+        "free_storage": round(free_storage, 2)
+    }
+
+
+# --- Clear Database Cache / Temporary Data ---
+
+async def clear_database_posts():
+    """Purono temporary verification tokens ebong daily quota cache purge kore"""
+    result = user_data.update_many(
+        {},
+        {
+            '$unset': {
+                'verify_status': "",
+                'last_free_time': ""
+            }
+        }
+    )
+    return result.modified_count
+
+
 # --- Token Verification Functions ---
 
 async def is_user_verified(user_id: int) -> bool:
@@ -40,7 +109,6 @@ async def is_user_verified(user_id: int) -> bool:
     is_verified = verify_status.get("is_verified", False)
     verified_time = verify_status.get("verified_time", 0)
     
-    # Check korbe time expire hoyeche kina
     if is_verified and (time.time() - verified_time) < VERIFY_EXPIRE:
         return True
     return False
@@ -93,11 +161,9 @@ async def is_premium_user(user_id: int) -> bool:
 
     expire_time = user.get("premium_expire", 0)
 
-    # Current time-er sathe expiry check
     if time.time() < expire_time:
         return True
     else:
-        # Time sesh hoye gele auto-remove premium
         user_data.update_one(
             {'_id': user_id},
             {
@@ -111,7 +177,6 @@ async def is_premium_user(user_id: int) -> bool:
 
 
 async def add_premium(user_id: int, days: int = 30):
-    # Jodi age thekei premium thake ebong validity thake, tobe tar sathe notun din jog hobe
     user = user_data.find_one({'_id': user_id})
     current_time = time.time()
     
@@ -167,7 +232,6 @@ async def get_free_usage_status(user_id: int) -> int:
     if not user:
         return 1
     last_free_time = user.get("last_free_time", 0)
-    # Jodi 24 ghonta (86400 seconds) par hoye jay tobe abar 1 pabe
     if (time.time() - last_free_time) >= 86400:
         return 1
     return 0
