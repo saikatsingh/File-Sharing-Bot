@@ -13,7 +13,8 @@ from helper_func import subscribed, encode, decode, get_messages, get_shortlink,
 from database.database import (
     add_user, del_user, full_userbase, present_user, 
     is_user_verified, update_verify_status, get_verify_token, set_verified,
-    is_premium_user, get_premium_status, get_free_usage_status, use_free_quota
+    is_premium_user, get_premium_status, get_free_usage_status, use_free_quota,
+    is_banned
 )
 
 file_auto_delete = humanize.naturaldelta(FILE_AUTO_DELETE)
@@ -99,9 +100,14 @@ I can store private files in Specified Channel and other users can access it fro
     )
 
 
-# --- /help COMMAND HANDLER (Screenshot 1 Format) ---
+# --- /help COMMAND HANDLER ---
 @Bot.on_message(filters.command('help') & filters.private)
 async def help_command_handler(client: Client, message: Message):
+    user_id = message.from_user.id
+    if await is_banned(user_id):
+        await message.reply_text("❌ <b>You are banned from using this bot!</b>", parse_mode=ParseMode.HTML)
+        return
+
     user_first = message.from_user.first_name or "User"
     help_caption = f"""⁉️ <b>HELLO {user_first} ~</b>
 
@@ -148,6 +154,11 @@ async def help_command_handler(client: Client, message: Message):
 # --- JARA SUBSCRIBED NAY TADER JONNO HANDLER ---
 @Bot.on_message(filters.command('start') & filters.private & ~subscribed)
 async def not_joined(client: Client, message: Message):
+    user_id = message.from_user.id
+    if await is_banned(user_id):
+        await message.reply_text("❌ <b>You are banned from using this bot!</b>", parse_mode=ParseMode.HTML)
+        return
+
     text = message.text
     deep_link = ""
     if len(text) > 7:
@@ -162,6 +173,12 @@ async def not_joined(client: Client, message: Message):
 @Bot.on_message(filters.command('start') & filters.private & subscribed)
 async def start_command(client: Client, message: Message):
     user_id = message.from_user.id
+    
+    # 0. Check if user is banned
+    if await is_banned(user_id):
+        await message.reply_text("❌ <b>You are banned from using this bot!</b>", parse_mode=ParseMode.HTML)
+        return
+
     if not await present_user(user_id):
         try:
             await add_user(user_id)
@@ -338,6 +355,10 @@ async def close_callback(client: Client, query: CallbackQuery):
 async def premium_menu_callback(client: Client, query: CallbackQuery):
     await query.answer()
     user_id = query.from_user.id
+    if await is_banned(user_id):
+        await query.answer("❌ You are banned!", show_alert=True)
+        return
+
     if await is_premium_user(user_id):
         status = await get_premium_status(user_id)
         await query.answer(f"✅ You are already Premium!\nValidity: {status}", show_alert=True)
@@ -357,10 +378,15 @@ async def premium_menu_callback(client: Client, query: CallbackQuery):
     )
 
 
-# 3. Help Menu Callback (Screenshot 1 Format)
+# 3. Help Menu Callback
 @Bot.on_callback_query(filters.regex('^open_help_menu$'))
 async def help_callback(client: Client, query: CallbackQuery):
     await query.answer()
+    user_id = query.from_user.id
+    if await is_banned(user_id):
+        await query.answer("❌ You are banned!", show_alert=True)
+        return
+
     user_first = query.from_user.first_name or "User"
     help_caption = f"""⁉️ <b>HELLO {user_first} ~</b>
 
@@ -427,59 +453,6 @@ I can store private files in Specified Channel and other users can access it fro
             )
     except MessageNotModified:
         pass
-
-
-@Bot.on_message(filters.command('users') & filters.private & filters.user(ADMINS))
-async def get_users(client: Bot, message: Message):
-    msg = await client.send_message(chat_id=message.chat.id, text="Processing...")
-    users = await full_userbase()
-    await msg.edit(f"{len(users)} Users Are Using This Bot")
-
-
-@Bot.on_message(filters.private & filters.command('broadcast') & filters.user(ADMINS))
-async def send_text(client: Bot, message: Message):
-    if message.reply_to_message:
-        query = await full_userbase()
-        broadcast_msg = message.reply_to_message
-        total = 0
-        successful = 0
-        blocked = 0
-        deleted = 0
-        unsuccessful = 0
-
-        pls_wait = await message.reply("<i>Broadcasting Message.. This will Take Some Time</i>")
-        for chat_id in query:
-            try:
-                await broadcast_msg.copy(chat_id)
-                successful += 1
-            except FloodWait as e:
-                await asyncio.sleep(e.x)
-                await broadcast_msg.copy(chat_id)
-                successful += 1
-            except UserIsBlocked:
-                await del_user(chat_id)
-                blocked += 1
-            except InputUserDeactivated:
-                await del_user(chat_id)
-                deleted += 1
-            except Exception:
-                unsuccessful += 1
-            total += 1
-
-        status = f"""<b><u>Broadcast Completed</u></b>
-
-<b>Total Users :</b> <code>{total}</code>
-<b>Successful :</b> <code>{successful}</code>
-<b>Blocked Users :</b> <code>{blocked}</code>
-<b>Deleted Accounts :</b> <code>{deleted}</code>
-<b>Unsuccessful :</b> <code>{unsuccessful}</code>"""
-
-        return await pls_wait.edit(status)
-
-    else:
-        msg = await message.reply("Use This Command As A Reply To Any Telegram Message With Out Any Spaces.")
-        await asyncio.sleep(8)
-        await msg.delete()
 
 
 async def delete_files(messages, client, k):
