@@ -13,10 +13,15 @@ DB_NAME = os.environ.get("DB_NAME", "madflixbotz")
 # 1. Database Channel (Private channel, jekhane bot shob original file store korbe)
 CHANNEL_ID = int(os.environ.get("CHANNEL_ID", "-1004345291636"))
 
-# 2. Main / Public Channel (Jekhane apni video upload korben, ar bot photo+button replace korbe):
-MAIN_CHANNEL_ID = int(os.environ.get("MAIN_CHANNEL_ID", "-1004420561870"))
+# 2. Main / Public Channels (Jekhane apni post korben; space diye multiple channel ID dite parben)
+MAIN_CHANNEL_IDS = [
+    int(x) for x in os.environ.get("MAIN_CHANNEL_IDS", "-1004420561870").split() if x
+]
 
-# FORCE_SUB_CHANNELS e space diye multiple channel id dite parben
+# Purono code er compatibility er jonno single ID fallback
+MAIN_CHANNEL_ID = MAIN_CHANNEL_IDS[0] if MAIN_CHANNEL_IDS else int(os.environ.get("MAIN_CHANNEL_ID", "-1004420561870"))
+
+# FORCE_SUB_CHANNELS e space diye multiple channel ID dite parben
 FORCE_SUB_CHANNELS = [
     int(x) for x in os.environ.get("FORCE_SUB_CHANNELS", "-1004396186497 -1004420561870 -1004316896651").split() if x
 ]
@@ -41,10 +46,9 @@ VERIFY_EXPIRE = int(os.environ.get("VERIFY_EXPIRE", "28800"))  # 8 hours = 28800
 VERIFY_TUTORIAL = os.environ.get("VERIFY_TUTORIAL", "https://t.me/How_to_open_file_to_link")
 
 # --- Premium / Indian UPI Payment Settings ---
-UPI_ID = os.environ.get("UPI_ID", "mailmetosaikat676@okhdfcbank")  # Apnar UPI ID boshaban
-UPI_QR_URL = os.environ.get("UPI_QR_URL", "https://graph.org/file/e5ec2cecc24ce6c1dbccf-9bb7df8e3e0d62d6d2.jpg")  # Apnar Scanner QR photo-r link
+UPI_ID = os.environ.get("UPI_ID", "mailmetosaikat676@okhdfcbank")
+UPI_QR_URL = os.environ.get("UPI_QR_URL", "https://graph.org/file/e5ec2cecc24ce6c1dbccf-9bb7df8e3e0d62d6d2.jpg")
 
-# Reference layout onujayi exact text format
 PREMIUM_PLANS_TEXT = os.environ.get(
     "PREMIUM_PLANS_TEXT",
     """✦ <b>PREMIUM PLANS:</b> ❞
