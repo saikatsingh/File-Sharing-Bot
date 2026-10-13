@@ -10,7 +10,14 @@ from pyrogram.types import (
 )
 from pyrogram.errors import FloodWait
 from bot import Bot
-from config import ADMINS, CHANNEL_ID, MAIN_CHANNEL_ID, DISABLE_CHANNEL_BUTTON
+from config import ADMINS, CHANNEL_ID, DISABLE_CHANNEL_BUTTON
+# MAIN_CHANNEL_IDS লিস্ট ইম্পোর্ট করা হলো (ব্যাকওয়ার্ড সাপোর্ট সহ)
+try:
+    from config import MAIN_CHANNEL_IDS
+except ImportError:
+    from config import MAIN_CHANNEL_ID
+    MAIN_CHANNEL_IDS = [MAIN_CHANNEL_ID]
+
 from helper_func import encode
 
 logger = logging.getLogger(__name__)
@@ -31,19 +38,32 @@ EXCLUDED_COMMANDS = [
 ]
 
 
-def clean_external_caption(caption: str) -> str:
-    """Caption theke shob external links, usernames ebong hyperlinks remove kore"""
+def clean_external_caption(caption: str, bot_username: str = "") -> str:
+    """
+    Caption theke shob external links, usernames ebong hyperlinks remove kore
+    ebong bot-er nijer username hyperlink add kore.
+    """
     if not caption:
-        return ""
+        text = ""
+    else:
+        # 1. HTML hyperlink <a href="...">Text</a> theke link fele shudhu 'Text' rakha
+        text = re.sub(r'<a\s+(?:[^>]*?\s+)?href="[^"]*"[^>]*>(.*?)</a>', r'\1', caption, flags=re.IGNORECASE)
+        # 2. Markdown hyperlink [Text](url) theke url fele shudhu Text rakha
+        text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+        # 3. Direct URLs remove kora
+        text = re.sub(r'https?://\S+|t\.me/\S+|telegram\.me/\S+', '', text)
+        # 4. Onno kono @channel ba @user tags remove kora
+        text = re.sub(r'@\w+', '', text)
+        
+        lines = [line.strip() for line in text.splitlines()]
+        text = "\n".join([line for line in lines if line]).strip()
     
-    text = re.sub(r'<a\s+(?:[^>]*?\s+)?href="[^"]*"[^>]*>(.*?)</a>', r'\1', caption, flags=re.IGNORECASE)
-    text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
-    text = re.sub(r'https?://\S+|t\.me/\S+|telegram\.me/\S+', '', text)
-    text = re.sub(r'@\w+', '', text)
+    # nijer bot hyperlink add kora
+    if bot_username:
+        bot_promo = f'\n\n⚡ <b>Shared by:</b> <a href="https://t.me/{bot_username}">@{bot_username}</a>'
+        return (text + bot_promo).strip() if text else f'⚡ <b>Shared by:</b> <a href="https://t.me/{bot_username}">@{bot_username}</a>'
     
-    lines = [line.strip() for line in text.splitlines()]
-    clean_text = "\n".join([line for line in lines if line])
-    return clean_text.strip()
+    return text
 
 
 def create_image_collage(image_paths: list) -> str:
@@ -79,7 +99,7 @@ def create_image_collage(image_paths: list) -> str:
 
 
 # --- 1. CHANNEL E POST ER REPLY TE /thumb COMMAND ---
-@Bot.on_message(filters.chat(MAIN_CHANNEL_ID) & filters.command('thumb'))
+@Bot.on_message(filters.chat(MAIN_CHANNEL_IDS) & filters.command('thumb'))
 async def thumb_command_channel(client: Client, message: Message):
     if not message.reply_to_message:
         k = await message.reply_text("❌ Please reply to the post whose thumbnail you want to change!")
@@ -277,11 +297,24 @@ async def channel_post(client: Client, message: Message):
         return
 
     reply_text = await message.reply_text("Please Wait...!", quote=True)
+    bot_uname = client.username or (await client.get_me()).username
+
+    # Private upload-eo clean caption with bot hyperlink
+    cleaned_cap = clean_external_caption(message.caption.html if message.caption else "", bot_uname)
+
     try:
-        post_message = await message.copy(chat_id=client.db_channel.id, disable_notification=True)
+        post_message = await message.copy(
+            chat_id=client.db_channel.id, 
+            caption=cleaned_cap, 
+            disable_notification=True
+        )
     except FloodWait as e:
         await asyncio.sleep(e.x)
-        post_message = await message.copy(chat_id=client.db_channel.id, disable_notification=True)
+        post_message = await message.copy(
+            chat_id=client.db_channel.id, 
+            caption=cleaned_cap, 
+            disable_notification=True
+        )
     except Exception as e:
         logger.error(f"Error copying post in private: {e}")
         await reply_text.edit_text("Something Went Wrong..!")
@@ -290,7 +323,6 @@ async def channel_post(client: Client, message: Message):
     converted_id = post_message.id * abs(client.db_channel.id)
     string = f"get-{converted_id}"
     base64_string = await encode(string)
-    bot_uname = client.username or (await client.get_me()).username
     link = f"https://t.me/{bot_uname}?start={base64_string}"
 
     admin_markup = InlineKeyboardMarkup([
@@ -312,57 +344,66 @@ async def channel_post(client: Client, message: Message):
 
 # --- 6. BATCH WORKFLOW CORE EXECUTION ---
 async def process_batch_files(client: Client, channel_id: int, messages_list: list):
-    """Multiple media (video, photo, document, audio, GIF/animation) ke DB channel-e pathiye Batch link toiri kore"""
+    """Multiple media ke DB channel-e sanitized caption shoho copy kore Batch link toiri kore"""
     if not messages_list:
         return
 
+    bot_uname = client.username or (await client.get_me()).username
     copied_ids = []
     first_thumb_file_id = None
     common_caption = None
 
     for msg in messages_list:
-        # Check jekono media: Video, Photo, Document, Audio, athoba Animation (GIF)
         media = msg.video or msg.document or msg.photo or msg.audio or msg.animation
         if not media:
             continue
 
-        # Thumbnail extract kora
         if not first_thumb_file_id:
             if msg.photo:
                 first_thumb_file_id = msg.photo.file_id
             elif getattr(media, "thumbs", None):
                 first_thumb_file_id = media.thumbs[0].file_id
 
+        # DB Channel ebong Public Channel-er jonno caption sanitize kora
+        cleaned_msg_cap = clean_external_caption(msg.caption.html if msg.caption else "", bot_uname)
         if not common_caption and msg.caption:
-            common_caption = clean_external_caption(msg.caption.html)
+            common_caption = cleaned_msg_cap
 
         try:
-            db_msg = await msg.copy(chat_id=client.db_channel.id, disable_notification=True)
+            # DB Channel-e copy korar shomoy sanitize kora caption + bot hyperlink dewa holo
+            db_msg = await msg.copy(
+                chat_id=client.db_channel.id, 
+                caption=cleaned_msg_cap, 
+                disable_notification=True
+            )
             copied_ids.append(db_msg.id)
         except FloodWait as e:
             await asyncio.sleep(e.x)
-            db_msg = await msg.copy(chat_id=client.db_channel.id, disable_notification=True)
+            db_msg = await msg.copy(
+                chat_id=client.db_channel.id, 
+                caption=cleaned_msg_cap, 
+                disable_notification=True
+            )
             copied_ids.append(db_msg.id)
         except Exception as e:
-            logger.error(f"Error copying batch media: {e}")
+            logger.error(f"Error copying batch media to DB: {e}")
 
     if not copied_ids:
         return
 
-    bot_uname = client.username or (await client.get_me()).username
     db_channel_id = abs(client.db_channel.id)
 
     if len(copied_ids) == 1:
         single_id = copied_ids[0] * db_channel_id
         string = f"get-{single_id}"
         btn_text = "📥 Download File"
-        def_cap = common_caption if common_caption else "🎬 <b>Media File Attached</b>"
+        def_cap = common_caption if common_caption else f"🎬 <b>Media File</b>\n\n⚡ <a href='https://t.me/{bot_uname}'>@{bot_uname}</a>"
     else:
         first_id = min(copied_ids) * db_channel_id
         last_id = max(copied_ids) * db_channel_id
         string = f"get-{first_id}-{last_id}"
         btn_text = f"📦 Download Batch Files ({len(copied_ids)} Files)"
-        def_cap = common_caption if common_caption else f"📦 <b>Batch Collection ({len(copied_ids)} Files)</b>"
+        def_cap = common_caption if common_caption else f"📦 <b>Batch Collection ({len(copied_ids)} Files)</b>\n\n⚡ <a href='https://t.me/{bot_uname}'>@{bot_uname}</a>"
 
     base64_string = await encode(string)
     link = f"https://t.me/{bot_uname}?start={base64_string}"
@@ -406,8 +447,8 @@ async def process_batch_files(client: Client, channel_id: int, messages_list: li
             pass
 
 
-# --- 7. AUTO REPLACE WORKFLOW (PUBLIC CHANNEL INCOMING POSTS) ---
-@Bot.on_message(filters.chat(MAIN_CHANNEL_ID))
+# --- 7. AUTO REPLACE WORKFLOW (MULTIPLE PUBLIC CHANNELS SUPPORT) ---
+@Bot.on_message(filters.chat(MAIN_CHANNEL_IDS))
 async def new_post(client: Client, message: Message):
     if DISABLE_CHANNEL_BUTTON:
         return
@@ -415,7 +456,6 @@ async def new_post(client: Client, message: Message):
     if message.text and message.text.startswith('/'):
         return
 
-    # Check kora holo media ache kina (GIF/animation shoho)
     has_media = bool(message.video or message.document or message.photo or message.audio or message.animation)
     if not has_media:
         return
