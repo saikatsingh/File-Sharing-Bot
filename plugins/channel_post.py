@@ -2,6 +2,7 @@ import os
 import re
 import asyncio
 import logging
+from PIL import Image
 from pyrogram import filters, Client
 from pyrogram.types import (
     Message, InlineKeyboardMarkup, InlineKeyboardButton, 
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Track thumb editing state in admin PM
 THUMB_PROCESS = {}
+THUMB_MEDIA_LOCKS = {}
 
 # Channel-wide Sliding Batch Queue
 CHANNEL_QUEUE = {}
@@ -33,22 +35,48 @@ def clean_external_caption(caption: str) -> str:
     if not caption:
         return ""
     
-    # 1. HTML hyperlink <a href="...">Text</a> theke link fele shudhu 'Text' rakha
     text = re.sub(r'<a\s+(?:[^>]*?\s+)?href="[^"]*"[^>]*>(.*?)</a>', r'\1', caption, flags=re.IGNORECASE)
-    
-    # 2. Markdown hyperlink [Text](url) theke url fele shudhu Text rakha
     text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
-    
-    # 3. Direct URLs (http, https, t.me, telegram.me) remove kora
     text = re.sub(r'https?://\S+|t\.me/\S+|telegram\.me/\S+', '', text)
-    
-    # 4. Telegram @channel ba @user tags remove kora
     text = re.sub(r'@\w+', '', text)
     
-    # 5. Faltu blank lines & spaces clean kora
     lines = [line.strip() for line in text.splitlines()]
     clean_text = "\n".join([line for line in lines if line])
     return clean_text.strip()
+
+
+def create_image_collage(image_paths: list) -> str:
+    """Multiple images ke vertically jora lagie 1-ti collage image toiri kore"""
+    if len(image_paths) == 1:
+        return image_paths[0]
+
+    images = [Image.open(p) for p in image_paths]
+    
+    # Width equal rakhar jonno prothom chobir width standard dhora holo
+    target_width = images[0].width
+    resized_images = []
+    total_height = 0
+
+    for img in images:
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        # Aspect ratio thik rekhe resize
+        w_percent = target_width / float(img.width)
+        h_size = int(float(img.height) * float(w_percent))
+        img_resized = img.resize((target_width, h_size), Image.Resampling.LANCZOS)
+        resized_images.append(img_resized)
+        total_height += h_size
+
+    collage = Image.new('RGB', (target_width, total_height))
+    y_offset = 0
+    for img in resized_images:
+        collage.paste(img, (0, y_offset))
+        y_offset += img.height
+
+    collage_path = "downloads/collage_thumb.jpg"
+    os.makedirs("downloads", exist_ok=True)
+    collage.save(collage_path, format="JPEG", quality=90)
+    return collage_path
 
 
 # --- 1. CHANNEL E POST ER REPLY TE /thumb COMMAND ---
@@ -86,13 +114,14 @@ async def thumb_command_channel(client: Client, message: Message):
             "message_id": target_msg.id,
             "original_caption": target_msg.caption.html if target_msg.caption else "",
             "reply_markup": target_msg.reply_markup,
-            "step": "waiting_photo"
+            "step": "waiting_photo",
+            "photos_received": []
         }
         cancel_btn = InlineKeyboardMarkup([[InlineKeyboardButton("❌ Cancel", callback_data="cancel_thumb_edit")]])
         try:
             await client.send_message(
                 chat_id=admin_id,
-                text=f"🖼 <b>Change Thumbnail Request</b>\n\nTarget Post ID: <code>{target_msg.id}</code> in channel.\n\n👉 <b>Please send the new image/photo now.</b>",
+                text=f"🖼 <b>Change Thumbnail Request</b>\n\nTarget Post ID: <code>{target_msg.id}</code> in channel.\n\n👉 <b>Please send the new image/photos now.</b> (You can send 1, 2, or 3 images together!)",
                 reply_markup=cancel_btn
             )
         except Exception as e:
@@ -109,22 +138,58 @@ async def handle_admin_thumb_input(client: Client, message: Message):
     process = THUMB_PROCESS[admin_id]
     step = process.get("step")
 
-    # Step A: Admin sent Photo
+    # Step A: Admin sent Photo(s)
     if step == "waiting_photo":
         if not message.photo:
             await message.reply_text("⚠️ Please send an image/photo for the thumbnail!")
             return
 
-        process["photo_file_id"] = message.photo.file_id
+        process["photos_received"].append(message)
+
+        if admin_id in THUMB_MEDIA_LOCKS:
+            return
+
+        THUMB_MEDIA_LOCKS[admin_id] = True
+        # 3 second wait korbe jate 2-3 ta photo pathale shobgulo collect hoye jay
+        await asyncio.sleep(3.0)
+        THUMB_MEDIA_LOCKS.pop(admin_id, None)
+
+        received_msgs = process.get("photos_received", [])
+        if not received_msgs:
+            return
+
+        msg_wait = await message.reply_text("⏳ Processing images...")
+        downloaded_paths = []
+
+        for p_msg in received_msgs:
+            try:
+                p_path = await client.download_media(p_msg.photo.file_id)
+                if p_path and os.path.exists(p_path):
+                    downloaded_paths.append(p_path)
+            except Exception as e:
+                logger.error(f"Error downloading admin thumb: {e}")
+
+        if not downloaded_paths:
+            await msg_wait.edit_text("❌ Failed to process images. Please try again.")
+            return
+
+        # 1-ti thakle direct, 2-3ti thakle auto-collage
+        final_thumb_file = create_image_collage(downloaded_paths)
+        process["final_local_image"] = final_thumb_file
+        process["temp_files_to_clean"] = downloaded_paths
         process["step"] = "waiting_caption"
+
+        await msg_wait.delete()
 
         skip_btn = InlineKeyboardMarkup([
             [InlineKeyboardButton("⏭ Keep Original Caption", callback_data="skip_caption_edit")],
             [InlineKeyboardButton("❌ Cancel", callback_data="cancel_thumb_edit")]
         ])
 
+        count_text = f"{len(downloaded_paths)} images combined into 1 collage!" if len(downloaded_paths) > 1 else "Image received!"
+
         await message.reply_text(
-            "✅ <b>Image received!</b>\n\nNow send the <b>New Caption</b> for this post, or tap <b>Keep Original Caption</b> below to leave it as it was.",
+            f"✅ <b>{count_text}</b>\n\nNow send the <b>New Caption</b> for this post, or tap <b>Keep Original Caption</b> below to leave it as it was.",
             reply_markup=skip_btn
         )
         return
@@ -143,14 +208,15 @@ async def apply_new_thumbnail(client: Client, admin_id: int, final_caption: str)
     process = THUMB_PROCESS.pop(admin_id)
     channel_id = process["channel_id"]
     msg_id = process["message_id"]
-    photo_file_id = process["photo_file_id"]
+    final_local_image = process.get("final_local_image")
+    temp_files = process.get("temp_files_to_clean", [])
     reply_markup = process["reply_markup"]
 
     try:
         await client.edit_message_media(
             chat_id=channel_id,
             message_id=msg_id,
-            media=InputMediaPhoto(media=photo_file_id, caption=final_caption),
+            media=InputMediaPhoto(media=final_local_image, caption=final_caption),
             reply_markup=reply_markup
         )
         await client.send_message(
@@ -163,6 +229,19 @@ async def apply_new_thumbnail(client: Client, admin_id: int, final_caption: str)
             chat_id=admin_id,
             text=f"❌ <b>Failed to update post!</b>\n\nError: <code>{e}</code>"
         )
+    finally:
+        # Cleanup temporary files
+        for p in temp_files:
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
+        if final_local_image and os.path.exists(final_local_image) and final_local_image not in temp_files:
+            try:
+                os.remove(final_local_image)
+            except Exception:
+                pass
 
 
 # --- 4. CALLBACKS: SKIP CAPTION & CANCEL ---
@@ -183,7 +262,14 @@ async def skip_caption_callback(client: Client, query: CallbackQuery):
 async def cancel_thumb_callback(client: Client, query: CallbackQuery):
     admin_id = query.from_user.id
     if admin_id in THUMB_PROCESS:
-        THUMB_PROCESS.pop(admin_id)
+        process = THUMB_PROCESS.pop(admin_id)
+        # Temp cleanup on cancel
+        for p in process.get("temp_files_to_clean", []):
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
 
     await query.answer("Cancelled!")
     await query.message.edit_text("❌ Thumbnail change cancelled.")
@@ -310,7 +396,6 @@ async def process_batch_files(client: Client, channel_id: int, messages_list: li
             disable_web_page_preview=True
         )
 
-    # Public Channel theke original videos delete kora
     for msg in messages_list:
         try:
             await msg.delete()
@@ -330,21 +415,17 @@ async def new_post(client: Client, message: Message):
 
     channel_id = message.chat.id
 
-    # Channel-wide Sliding Buffer (Aksathe 4-5 ta pathale queue te nebe)
     if channel_id not in CHANNEL_QUEUE:
         CHANNEL_QUEUE[channel_id] = []
     
     CHANNEL_QUEUE[channel_id].append(message)
 
-    # Jodi already ekta timer active thake, ota collect korte thakbe
     if channel_id in CHANNEL_LOCKS:
         return
 
     CHANNEL_LOCKS[channel_id] = True
-    # 4 second wait korbe jate shobgulo video channel-e deliver hoye jaay
     await asyncio.sleep(4.0)
 
-    # Queue theke shob message niye Batch process kora
     msgs = CHANNEL_QUEUE.pop(channel_id, [])
     CHANNEL_LOCKS.pop(channel_id, None)
 
