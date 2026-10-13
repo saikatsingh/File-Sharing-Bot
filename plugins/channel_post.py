@@ -16,6 +16,10 @@ logger = logging.getLogger(__name__)
 # Track thumb editing state in admin PM
 THUMB_PROCESS = {}
 
+# Media Group / Batch Buffers
+MEDIA_GROUP_CACHE = {}
+ALBUM_LOCKS = {}
+
 # Shob dhoroner Bot Commands exclude kora holo jate link generate na hoy
 EXCLUDED_COMMANDS = [
     'start', 'help', 'myplan', 'plans', 'buy', 'premium', 
@@ -122,7 +126,6 @@ async def apply_new_thumbnail(client: Client, admin_id: int, final_caption: str)
     reply_markup = process["reply_markup"]
 
     try:
-        # Edit the media of channel post directly (keeps existing link buttons intact!)
         await client.edit_message_media(
             chat_id=channel_id,
             message_id=msg_id,
@@ -205,7 +208,94 @@ async def channel_post(client: Client, message: Message):
             logger.error(f"Error adding button to copied message: {e}")
 
 
-# --- 6. AUTO REPLACE WORKFLOW (PUBLIC CHANNEL INCOMING VIDEO) ---
+# --- 6. PUBLIC CHANNEL AUTO REPLACE & BATCH PROCESSOR ---
+async def process_batch_files(client: Client, channel_id: int, messages_list: list):
+    """Multiple videos ke DB channel-e pathiye ekta Batch link toiri kore"""
+    if not messages_list:
+        return
+
+    copied_ids = []
+    first_thumb_file_id = None
+    common_caption = None
+
+    for msg in messages_list:
+        media = msg.video or msg.document
+        if not media:
+            continue
+        if not first_thumb_file_id and media.thumbs:
+            first_thumb_file_id = media.thumbs[0].file_id
+        if not common_caption and msg.caption:
+            common_caption = msg.caption.html
+
+        try:
+            db_msg = await msg.copy(chat_id=client.db_channel.id, disable_notification=True)
+            copied_ids.append(db_msg.id)
+        except FloodWait as e:
+            await asyncio.sleep(e.x)
+            db_msg = await msg.copy(chat_id=client.db_channel.id, disable_notification=True)
+            copied_ids.append(db_msg.id)
+        except Exception as e:
+            logger.error(f"Error copying batch media: {e}")
+
+    if not copied_ids:
+        return
+
+    bot_uname = client.username or (await client.get_me()).username
+    db_channel_id = abs(client.db_channel.id)
+
+    if len(copied_ids) == 1:
+        single_id = copied_ids[0] * db_channel_id
+        string = f"get-{single_id}"
+        btn_text = "📥 Download File"
+        def_cap = common_caption or "🎬 <b>Video File Attached</b>"
+    else:
+        first_id = min(copied_ids) * db_channel_id
+        last_id = max(copied_ids) * db_channel_id
+        string = f"get-{first_id}-{last_id}"
+        btn_text = f"📦 Download Batch Files ({len(copied_ids)} Videos)"
+        def_cap = common_caption or f"📦 <b>Batch Collection ({len(copied_ids)} Files)</b>"
+
+    base64_string = await encode(string)
+    link = f"https://t.me/{bot_uname}?start={base64_string}"
+
+    reply_markup = InlineKeyboardMarkup([
+        [InlineKeyboardButton(btn_text, url=link)]
+    ])
+
+    photo_sent = False
+    if first_thumb_file_id:
+        thumb_path = None
+        try:
+            thumb_path = await client.download_media(first_thumb_file_id)
+            if thumb_path and os.path.exists(thumb_path):
+                await client.send_photo(
+                    chat_id=channel_id,
+                    photo=thumb_path,
+                    caption=def_cap,
+                    reply_markup=reply_markup
+                )
+                photo_sent = True
+        except Exception as e:
+            logger.error(f"Failed to send thumbnail: {e}")
+        finally:
+            if thumb_path and os.path.exists(thumb_path):
+                os.remove(thumb_path)
+
+    if not photo_sent:
+        await client.send_message(
+            chat_id=channel_id,
+            text=def_cap,
+            reply_markup=reply_markup,
+            disable_web_page_preview=True
+        )
+
+    for msg in messages_list:
+        try:
+            await msg.delete()
+        except Exception:
+            pass
+
+
 @Bot.on_message(filters.channel & filters.incoming & filters.chat(MAIN_CHANNEL_ID))
 async def new_post(client: Client, message: Message):
     if DISABLE_CHANNEL_BUTTON:
@@ -215,62 +305,22 @@ async def new_post(client: Client, message: Message):
     if not media:
         return
 
-    try:
-        # 1. Public Channel theke Private DB Channel (client.db_channel.id) e copy kora
-        try:
-            db_msg = await message.copy(chat_id=client.db_channel.id, disable_notification=True)
-        except FloodWait as e:
-            await asyncio.sleep(e.x)
-            db_msg = await message.copy(chat_id=client.db_channel.id, disable_notification=True)
+    group_id = message.media_group_id
 
-        # 2. Database Channel ID diye shothik link toiri
-        converted_id = db_msg.id * abs(client.db_channel.id)
-        string = f"get-{converted_id}"
-        base64_string = await encode(string)
-        bot_uname = client.username or (await client.get_me()).username
-        link = f"https://t.me/{bot_uname}?start={base64_string}"
+    # 1. Multiple video eksathe ashle (Album/Media group)
+    if group_id:
+        if group_id not in MEDIA_GROUP_CACHE:
+            MEDIA_GROUP_CACHE[group_id] = []
+        MEDIA_GROUP_CACHE[group_id].append(message)
 
-        reply_markup = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📥 Download / Get File", url=link)]
-        ])
+        if group_id not in ALBUM_LOCKS:
+            ALBUM_LOCKS[group_id] = True
+            await asyncio.sleep(3.5)
+            msgs = MEDIA_GROUP_CACHE.pop(group_id, [])
+            ALBUM_LOCKS.pop(group_id, None)
+            if msgs:
+                await process_batch_files(client, message.chat.id, msgs)
+        return
 
-        # 3. Caption toiri
-        file_name = getattr(media, "file_name", None) or "Media File"
-        caption = message.caption.html if message.caption else f"🎬 <b>File:</b> <code>{file_name}</code>"
-
-        # 4. Thumbnail download kore Public Channel e send kora
-        photo_sent = False
-        if media.thumbs:
-            thumb_path = None
-            try:
-                thumb_path = await client.download_media(media.thumbs[0].file_id)
-                if thumb_path and os.path.exists(thumb_path):
-                    await client.send_photo(
-                        chat_id=message.chat.id,
-                        photo=thumb_path,
-                        caption=caption,
-                        reply_markup=reply_markup
-                    )
-                    photo_sent = True
-            except Exception as e:
-                logger.error(f"Failed to download/send thumbnail: {e}")
-            finally:
-                if thumb_path and os.path.exists(thumb_path):
-                    os.remove(thumb_path)
-
-        if not photo_sent:
-            await client.send_message(
-                chat_id=message.chat.id,
-                text=caption,
-                reply_markup=reply_markup,
-                disable_web_page_preview=True
-            )
-
-        # 5. Public Channel theke original boro video remove kora
-        try:
-            await message.delete()
-        except Exception as e:
-            logger.error(f"Failed to delete original video: {e}")
-
-    except Exception as e:
-        logger.error(f"Error in auto replace workflow: {e}", exc_info=True)
+    # 2. Single video
+    await process_batch_files(client, message.chat.id, [message])
