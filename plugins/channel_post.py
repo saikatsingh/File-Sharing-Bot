@@ -92,7 +92,7 @@ async def thumb_command_channel(client: Client, message: Message):
         return
 
     target_msg = message.reply_to_message
-    if not (target_msg.photo or target_msg.document or target_msg.video):
+    if not (target_msg.photo or target_msg.document or target_msg.video or target_msg.animation):
         k = await message.reply_text("❌ The replied message does not have any media!")
         await asyncio.sleep(5)
         try:
@@ -312,7 +312,7 @@ async def channel_post(client: Client, message: Message):
 
 # --- 6. BATCH WORKFLOW CORE EXECUTION ---
 async def process_batch_files(client: Client, channel_id: int, messages_list: list):
-    """Multiple media (video, photo, document, audio) ke DB channel-e pathiye ekta Batch link toiri kore"""
+    """Multiple media (video, photo, document, audio, GIF/animation) ke DB channel-e pathiye Batch link toiri kore"""
     if not messages_list:
         return
 
@@ -321,10 +321,12 @@ async def process_batch_files(client: Client, channel_id: int, messages_list: li
     common_caption = None
 
     for msg in messages_list:
-        media = msg.video or msg.document or msg.photo or msg.audio
+        # Check jekono media: Video, Photo, Document, Audio, athoba Animation (GIF)
+        media = msg.video or msg.document or msg.photo or msg.audio or msg.animation
         if not media:
             continue
 
+        # Thumbnail extract kora
         if not first_thumb_file_id:
             if msg.photo:
                 first_thumb_file_id = msg.photo.file_id
@@ -396,6 +398,7 @@ async def process_batch_files(client: Client, channel_id: int, messages_list: li
             disable_web_page_preview=True
         )
 
+    # Public Channel theke original media-gulo delete kora
     for msg in messages_list:
         try:
             await msg.delete()
@@ -412,7 +415,8 @@ async def new_post(client: Client, message: Message):
     if message.text and message.text.startswith('/'):
         return
 
-    has_media = bool(message.video or message.document or message.photo or message.audio)
+    # Check kora holo media ache kina (GIF/animation shoho)
+    has_media = bool(message.video or message.document or message.photo or message.audio or message.animation)
     if not has_media:
         return
 
