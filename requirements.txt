@@ -5,3 +5,4 @@ pymongo[srv]
 dnspython
 aiohttp
 humanize
+Pillow
